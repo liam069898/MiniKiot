@@ -3,19 +3,62 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const zlib = require('node:zlib');
+const { promisify } = require('node:util');
 const db = require('./db');
 const auth = require('./security');
 const application = require('./application');
 const sessions = new Map(),
     attempts = new Map();
 const MAX_BODY = 8 * 1024 * 1024;
-function json(res, status, data) {
-    res.writeHead(status, {
+const ASSETS = {
+    '/': 'index.html',
+    '/index.html': 'index.html',
+    // Old URL kept so existing bookmarks still open the app.
+    '/giao_di_n_qu_n_l_b_n_h_ng_kiotviet.html': 'index.html',
+    '/app.js': 'app.js',
+    '/constants.js': 'constants.js',
+    '/data.js': 'client-store.js',
+    '/ui-safety.js': 'ui-safety.js'
+};
+// Static files cached in memory with a gzip copy; reloaded when mtime/size change on disk.
+const assetCache = new Map();
+async function loadAsset(file) {
+    const full = path.join(__dirname, file),
+        stat = await fs.promises.stat(full),
+        stamp = `${stat.mtimeMs}:${stat.size}`,
+        cached = assetCache.get(file);
+    if (cached?.stamp === stamp) return cached;
+    const raw = await fs.promises.readFile(full);
+    const asset = {
+        stamp,
+        raw,
+        gzip: await promisify(zlib.gzip)(raw, { level: 9 }),
+        etag: `"${crypto.createHash('sha1').update(raw).digest('base64url')}"`
+    };
+    assetCache.set(file, asset);
+    return asset;
+}
+// Responses whose request accepted gzip. Kept outside `res` so test doubles need no extra fields.
+const acceptsGzip = new WeakSet();
+const gzipAsync = promisify(zlib.gzip);
+async function json(res, status, data) {
+    let payload = JSON.stringify(data);
+    const headers = {
         'Content-Type': 'application/json; charset=utf-8',
         'Cache-Control': 'no-store',
-        'X-Content-Type-Options': 'nosniff'
-    });
-    res.end(JSON.stringify(data));
+        'X-Content-Type-Options': 'nosniff',
+        Vary: 'Accept-Encoding'
+    };
+    // Full views are several MB of repetitive JSON; level 1 gives ~95% reduction in ~15 ms and
+    // runs on the libuv threadpool, so the event loop stays free while compressing.
+    if (payload.length > 1024 && acceptsGzip.has(res)) {
+        payload = await gzipAsync(payload, { level: 1 });
+        headers['Content-Encoding'] = 'gzip';
+    }
+    headers['Content-Length'] = Buffer.byteLength(payload);
+    res.writeHead(status, headers);
+    res.end(payload);
 }
 async function body(req) {
     if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || ''))
@@ -50,7 +93,7 @@ function sessionUser(req) {
         sessions.delete(token);
         return null;
     }
-    const user = db.getAllData().users.find((u) => u.id === session.userId);
+    const user = db.readSnapshot().users.find((u) => u.id === session.userId);
     if (!user || user.status !== 'active' || user.password !== session.password) {
         sessions.delete(token);
         return null;
@@ -64,7 +107,7 @@ function setCookie(res, token, remember = false, secure = false) {
     );
 }
 function view(user) {
-    const data = db.getAllData();
+    const data = db.readSnapshot();
     const fresh = data.users.find((u) => u.id === user.id);
     if (!fresh || fresh.status !== 'active')
         throw Object.assign(new Error('Phiên đăng nhập đã hết hiệu lực.'), { status: 401 });
@@ -76,6 +119,7 @@ function view(user) {
     };
 }
 async function handler(req, res) {
+    if (/\bgzip\b/i.test(req.headers['accept-encoding'] || '')) acceptsGzip.add(res);
     try {
         const url = new URL(req.url, 'http://localhost');
         if (url.pathname.startsWith('/api/')) {
@@ -107,7 +151,7 @@ async function handler(req, res) {
                 const name =
                     typeof input.username === 'string' ? input.username.trim().toLowerCase() : '';
                 const user = db
-                    .getAllData()
+                    .readSnapshot()
                     .users.find((u) => u.username.toLowerCase() === name || u.phone === name);
                 if (
                     !user ||
@@ -227,31 +271,33 @@ async function handler(req, res) {
         }
         if (!['GET', 'HEAD'].includes(req.method))
             return json(res, 405, { success: false, error: 'Method not allowed' });
-        const assets = {
-            '/': 'index.html',
-            '/index.html': 'index.html',
-            '/giao_di_n_qu_n_l_b_n_h_ng_kiotviet.html': 'index.html',
-            '/app.js': 'app.js',
-            '/constants.js': 'constants.js',
-            '/data.js': 'client-store.js',
-            '/ui-safety.js': 'ui-safety.js'
-        };
-        const file = Object.hasOwn(assets, url.pathname) ? assets[url.pathname] : null;
+        const file = Object.hasOwn(ASSETS, url.pathname) ? ASSETS[url.pathname] : null;
         if (!file) return json(res, 404, { success: false, error: 'Không tìm thấy tài nguyên.' });
-        const content = await fs.promises.readFile(path.join(__dirname, file));
-        res.writeHead(200, {
+        const asset = await loadAsset(file);
+        const gzip = acceptsGzip.has(res);
+        const headers = {
             'Content-Type': file.endsWith('.html')
                 ? 'text/html; charset=utf-8'
                 : 'text/javascript; charset=utf-8',
             'X-Content-Type-Options': 'nosniff',
             'Referrer-Policy': 'same-origin',
             'Cache-Control': 'no-cache',
-            'X-Frame-Options': 'DENY'
-        });
+            'X-Frame-Options': 'DENY',
+            ETag: asset.etag,
+            Vary: 'Accept-Encoding'
+        };
+        if (req.headers['if-none-match'] === asset.etag) {
+            res.writeHead(304, headers);
+            return res.end();
+        }
+        const content = gzip ? asset.gzip : asset.raw;
+        if (gzip) headers['Content-Encoding'] = 'gzip';
+        headers['Content-Length'] = content.length;
+        res.writeHead(200, headers);
         res.end(req.method === 'HEAD' ? undefined : content);
     } catch (error) {
         if (!res.headersSent)
-            json(res, error.status || 500, {
+            await json(res, error.status || 500, {
                 success: false,
                 error: error.status
                     ? error.message

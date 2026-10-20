@@ -532,3 +532,165 @@ test('JSON arrays and null are rejected as malformed API bodies', async () => {
     assert.equal((await request('POST', '/api/login', null)).status, 400);
     assert.equal((await request('POST', '/api/login', [])).status, 400);
 });
+
+test('read snapshot is frozen, shared, and refreshed after any write', () => {
+    const first = db.readSnapshot();
+    assert.equal(db.readSnapshot(), first);
+    assert.ok(Object.isFrozen(first.products[0]));
+    assert.throws(() => {
+        first.products[0].stock = 99;
+    }, TypeError);
+    assert.equal(Object.isFrozen(db.getAllData().products[0]), false);
+    db.getDb().prepare("UPDATE products SET minStock=7 WHERE id='SP'").run();
+    assert.equal(db.readSnapshot().products[0].minStock, 7);
+    sell();
+    assert.equal(db.readSnapshot().products[0].stock, 2);
+    assert.equal(db.readSnapshot().invoices.length, 1);
+    const projected = app.project(db.readSnapshot(), admin);
+    assert.equal(projected.users[0].password, undefined);
+    assert.ok(db.readSnapshot().users[0].password);
+});
+
+test('static assets support gzip and ETag revalidation', async () => {
+    const zlib = require('node:zlib');
+    const plain = await request('GET', '/app.js');
+    assert.equal(plain.status, 200);
+    assert.equal(plain.headers['Content-Encoding'], undefined);
+    const etag = plain.headers.ETag;
+    assert.match(etag, /^"[\w-]+"$/);
+    const zipped = await request('GET', '/app.js', undefined, undefined, {
+        'accept-encoding': 'gzip, br'
+    });
+    assert.equal(zipped.headers['Content-Encoding'], 'gzip');
+    assert.equal(zlib.gunzipSync(zipped.body).toString(), plain.body.toString());
+    assert.ok(zipped.body.length < plain.body.length / 3);
+    const revalidated = await request('GET', '/app.js', undefined, undefined, {
+        'if-none-match': etag
+    });
+    assert.equal(revalidated.status, 304);
+    assert.equal(revalidated.body, undefined);
+});
+test('diff-based save stores exactly what a full rewrite stores', () => {
+    const d = db.getDb();
+    const dump = () =>
+        Object.fromEntries(
+            db.ENTITY_TABLES.map((t) => [t, d.prepare(`SELECT * FROM ${t} ORDER BY rowid`).all()])
+        );
+    // Same input saved both ways, each from the same starting state (rolled back in between).
+    const saveBoth = (data) => {
+        const out = [];
+        for (const fullRewrite of [false, true]) {
+            d.exec('BEGIN IMMEDIATE');
+            try {
+                db.saveAllData(structuredClone(data), true, { fullRewrite });
+                out.push({ rows: dump(), read: db.getAllData() });
+            } finally {
+                d.exec('ROLLBACK');
+            }
+        }
+        return out;
+    };
+    let seed = 7;
+    const rand = (n) => (((seed = (seed * 1103515245 + 12345) % 2147483648) % n) + n) % n;
+    const base = db.getAllData();
+    for (let i = 0; i < 40; i++)
+        base.invoices.push({
+            id: `I${i}`,
+            code: `HD${i}`,
+            total: i * 1000,
+            items: [],
+            branch: 'A'
+        });
+    for (let i = 0; i < 20; i++)
+        base.products.push({ id: `P${i}`, code: `P${i}`, name: `P${i}`, stock: i, branch: 'A' });
+    db.saveAllData(base);
+    const mutations = [
+        (rows) => rows.unshift({ id: `NEW${rand(1e9)}`, code: 'N', total: 5, items: [] }),
+        (rows) => rows.push({ id: `NEW${rand(1e9)}`, code: 'N', stock: 2 }),
+        (rows) => rows.length && rows.splice(rand(rows.length), 1),
+        (rows) => rows.length && Object.assign(rows[rand(rows.length)], { note: `x${rand(99)}` }),
+        (rows) => rows.length && (rows[rand(rows.length)].code = `C${rand(99)}`),
+        (rows) => rows.length > 2 && rows.splice(1, 0, { id: `MID${rand(1e9)}`, code: 'M' }),
+        (rows) => rows.reverse(),
+        (rows) => rows.length && rows.push({ ...rows[0] }) // duplicate id: both paths must fail
+    ];
+    for (let round = 0; round < 60; round++) {
+        const data = db.getAllData();
+        for (let k = 0; k < 3; k++) {
+            const table = rand(2) ? 'invoices' : 'products';
+            mutations[rand(mutations.length)](data[table]);
+        }
+        const dup = ['invoices', 'products'].some(
+            (t) => new Set(data[t].map((r) => r.id)).size !== data[t].length
+        );
+        if (dup) {
+            for (const fullRewrite of [false, true])
+                assert.throws(() => db.saveAllData(structuredClone(data), false, { fullRewrite }));
+            continue;
+        }
+        const [diff, full] = saveBoth(data);
+        assert.deepEqual(diff.rows, full.rows, `round ${round}`);
+        assert.deepEqual(diff.read, full.read, `round ${round}`);
+        assert.deepEqual(
+            diff.read.invoices.map((r) => r.id),
+            data.invoices.map((r) => r.id)
+        );
+        db.saveAllData(data); // carry state forward so later rounds start from varied rowids
+    }
+    // Saving unchanged data must not touch any entity row.
+    const before = d.prepare('SELECT total_changes() AS n').get().n;
+    d.exec('BEGIN IMMEDIATE');
+    try {
+        const settingsRows = Object.keys(db.getAllData().settings).length;
+        db.saveAllData(db.getAllData(), true);
+        const written = d.prepare('SELECT total_changes() AS n').get().n - before;
+        assert.equal(written, settingsRows * 2 + 1); // settings delete+insert, recentActivities
+    } finally {
+        d.exec('ROLLBACK');
+    }
+});
+test('readForWrite returns a mutable copy of current data inside a transaction', () => {
+    assert.throws(() => db.readForWrite(), /transaction/);
+    const snap = db.readSnapshot();
+    const d = db.getDb();
+    d.exec('BEGIN IMMEDIATE');
+    try {
+        const copy = db.readForWrite();
+        assert.deepEqual(copy, db.getAllData());
+        assert.notEqual(copy, snap);
+        copy.products[0].stock = 99;
+        assert.equal(snap.products[0].stock, 3);
+    } finally {
+        d.exec('ROLLBACK');
+    }
+    // A write the snapshot has not seen must not be served from it.
+    d.prepare("UPDATE products SET stock=8 WHERE id='SP'").run();
+    d.exec('BEGIN IMMEDIATE');
+    try {
+        assert.equal(db.readForWrite().products[0].stock, 8);
+    } finally {
+        d.exec('ROLLBACK');
+    }
+});
+test('JSON API responses are gzipped only when the client accepts it', async () => {
+    const zlib = require('node:zlib');
+    const login = await request('POST', '/api/login', {
+        username: 'admin',
+        password: 'Test-password-123'
+    });
+    const cookie = login.headers['set-cookie'].split(';')[0];
+    const plain = await request('GET', '/api/data', undefined, cookie);
+    assert.equal(plain.headers['Content-Encoding'], undefined);
+    assert.equal(plain.headers.Vary, 'Accept-Encoding');
+    const zipped = await request('GET', '/api/data', undefined, cookie, {
+        'accept-encoding': 'gzip, deflate'
+    });
+    assert.equal(zipped.headers['Content-Encoding'], 'gzip');
+    assert.equal(zipped.headers['Content-Length'], zipped.body.length);
+    assert.deepEqual(JSON.parse(zlib.gunzipSync(zipped.body)), plain.json);
+    const small = await request('GET', '/api/nope', undefined, cookie, {
+        'accept-encoding': 'gzip'
+    });
+    assert.equal(small.status, 404);
+    assert.equal(small.headers['Content-Encoding'], undefined);
+});

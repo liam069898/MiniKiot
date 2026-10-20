@@ -3,8 +3,15 @@ const crypto = require('node:crypto');
 const db = require('./db');
 const { can, allowedBranches, publicUser, requirePermission, hashPassword } = require('./security');
 const { execute, fail, amount, branchOf } = require('./domain');
-const clone = (x) => JSON.parse(JSON.stringify(x));
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const BRANCH_SCOPED = new Set([
+    'products',
+    'invoices',
+    'imports',
+    'cashbook',
+    'returns',
+    'stocktakes'
+]);
 const readable = {
     products: ['pos', 'products', 'imports', 'stocktakes', 'transfers', 'reports', 'dashboard'],
     customers: ['pos', 'customers', 'invoices', 'cashbook'],
@@ -17,28 +24,23 @@ const readable = {
     transfers: ['transfers'],
     users: ['users']
 };
+// Builds the user's view without deep-cloning: new arrays/objects at the top level, rows shared
+// with `data`. Callers must treat the result as read-only (it may come from the frozen snapshot).
 function project(data, user) {
-    const result = clone(data),
-        branches = allowedBranches(user, data);
+    const result = { ...data },
+        branches = new Set(allowedBranches(user, data));
     for (const [table, perms] of Object.entries(readable)) {
-        if (!perms.some((p) => can(user, p))) {
-            result[table] = [];
-            continue;
-        }
-        if (
-            ['products', 'invoices', 'imports', 'cashbook', 'returns', 'stocktakes'].includes(table)
-        )
-            result[table] = result[table].filter((r) => branches.includes(branchOf(r)));
-        if (table === 'transfers')
-            result[table] = result[table].filter(
-                (r) => branches.includes(r.fromBranch) || branches.includes(r.toBranch)
+        if (!perms.some((p) => can(user, p))) result[table] = [];
+        else if (BRANCH_SCOPED.has(table))
+            result[table] = data[table].filter((r) => branches.has(branchOf(r)));
+        else if (table === 'transfers')
+            result[table] = data[table].filter(
+                (r) => branches.has(r.fromBranch) || branches.has(r.toBranch)
             );
     }
     result.users = result.users.map(publicUser);
     // Branch directory is needed to select destinations; inventory is still scoped above.
-    result.recentActivities = (result.recentActivities || []).filter((r) =>
-        branches.includes(r.branch)
-    );
+    result.recentActivities = (data.recentActivities || []).filter((r) => branches.has(r.branch));
     return result;
 }
 function revision() {
@@ -383,7 +385,7 @@ function transact(user, envelope) {
                 409
             );
         db.assertReadableRecords();
-        const data = db.getAllData();
+        const data = db.readForWrite();
         const current = data.users.find((u) => u.id === user.id);
         if (!current || current.status !== 'active') fail('Phiên đăng nhập đã hết hiệu lực.', 401);
         user = current;

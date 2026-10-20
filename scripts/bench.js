@@ -153,6 +153,9 @@ async function main() {
     console.log(`Dữ liệu: ${invoiceCount} hóa đơn, ${productCount} sản phẩm, 500 khách.`);
     console.log(`Mỗi phép đo chạy ${runs} lần.\n`);
     await time('GET /api/data', () => request('GET', '/api/data', undefined, cookie));
+    await time('GET /api/data (gzip)', () =>
+        request('GET', '/api/data', undefined, cookie, { 'accept-encoding': 'gzip' })
+    );
     let revision = JSON.parse((await request('GET', '/api/data', undefined, cookie)).body).revision;
     await time('POST /api/command (sale)', async () => {
         const res = await request(
