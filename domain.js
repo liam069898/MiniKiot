@@ -15,10 +15,13 @@ const quantity = (value) => {
     return value;
 };
 const code = (prefix) => `${prefix}${randomUUID()}`;
-const now = () => {
+const timestamp = () => {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, '0');
-    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return {
+        time: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`,
+        createdAt: d.toISOString()
+    };
 };
 const branchOf = (record) => record.branch || FALLBACK_BRANCH;
 function branch(data, user, name) {
@@ -70,7 +73,7 @@ function voucher(
     data.cashbook.unshift({
         id,
         code: id,
-        time: now(),
+        ...timestamp(),
         type,
         category,
         amount: value,
@@ -195,9 +198,9 @@ function sale(data, user, input) {
     const invoice = {
         id,
         code: id,
-        time: now(),
+        ...timestamp(),
         bookingVersion: 2,
-        payments: [{ amount: paid, method, time: now() }],
+        payments: [{ amount: paid, method, ...timestamp() }],
         customerId: retail ? null : cust.id,
         customer: cust?.name || 'Khách lẻ',
         phone: cust?.phone || 'Tại quầy',
@@ -319,7 +322,7 @@ function returnGoods(data, user, input, cancel = false) {
         inv.payments.push({
             amount: -refund,
             method: input.refundMethod || inv.paymentMethod || 'cash',
-            time: now()
+            ...timestamp()
         });
     inv.paid = Math.max(0, inv.paid - refund);
     inv.returnedTotal = already + value;
@@ -332,7 +335,7 @@ function returnGoods(data, user, input, cancel = false) {
         code: id,
         invoiceCode: inv.code,
         invoiceId: inv.id,
-        time: now(),
+        ...timestamp(),
         customer: inv.customer,
         customerId: cust?.id || null,
         phone: inv.phone,
@@ -361,7 +364,9 @@ function returnGoods(data, user, input, cancel = false) {
     if (cancel) {
         inv.status = 'cancelled';
         inv.cancelReason = input.reason || '';
-        inv.cancelTime = now();
+        const cancelled = timestamp();
+        inv.cancelTime = cancelled.time;
+        inv.cancelledAt = cancelled.createdAt;
     }
     return slip;
 }
@@ -425,7 +430,7 @@ function importGoods(data, user, input) {
     const record = {
         id,
         code: id,
-        time: now(),
+        ...timestamp(),
         nccCode: supplier.code,
         nccName: supplier.name,
         supplierId: supplier.id,
@@ -497,7 +502,7 @@ function payDebt(data, user, input) {
         doc.paid += allocated;
         doc.redPaid = allocated < debt;
         if (Array.isArray(doc.payments))
-            doc.payments.push({ amount: allocated, method, time: now() });
+            doc.payments.push({ amount: allocated, method, ...timestamp() });
         rest -= allocated;
         allocations.push({ documentId: doc.id, amount: allocated });
     }
@@ -570,7 +575,7 @@ function transfer(data, user, input) {
         record = {
             id,
             code: id,
-            time: now(),
+            ...timestamp(),
             fromBranch: from,
             toBranch: to,
             cashier: user.name,
@@ -617,7 +622,9 @@ function receive(data, user, input) {
         restoreStock(data, p, item.qty, item.imeis || [], record.id);
     }
     record.status = 'completed';
-    record.receivedTime = now();
+    const received = timestamp();
+    record.receivedTime = received.time;
+    record.receivedAt = received.createdAt;
     record.receiver = user.name;
     return record;
 }
@@ -635,7 +642,7 @@ function stocktake(data, user, input) {
         record = {
             id,
             code: id,
-            time: now(),
+            ...timestamp(),
             cashier: user.name,
             branch: br,
             status: 'draft',
@@ -728,4 +735,4 @@ function execute(data, user, type, input) {
             fail('Thao tác không hợp lệ.', 400);
     }
 }
-module.exports = { execute, amount, fail, branchOf, lineNet };
+module.exports = { execute, amount, fail, branchOf };

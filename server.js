@@ -19,7 +19,12 @@ const ASSETS = {
     '/app.js': 'app.js',
     '/constants.js': 'constants.js',
     '/data.js': 'client-store.js',
-    '/ui-safety.js': 'ui-safety.js'
+    '/ui-safety.js': 'ui-safety.js',
+    '/assets/tailwind.css': 'public/tailwind.css',
+    '/assets/inter.css': 'public/inter.css',
+    '/assets/inter-vietnamese-wght-normal.woff2': 'public/inter-vietnamese-wght-normal.woff2',
+    '/assets/inter-latin-ext-wght-normal.woff2': 'public/inter-latin-ext-wght-normal.woff2',
+    '/assets/inter-latin-wght-normal.woff2': 'public/inter-latin-wght-normal.woff2'
 };
 // Static files cached in memory with a gzip copy; reloaded when mtime/size change on disk.
 const assetCache = new Map();
@@ -167,19 +172,36 @@ async function handler(req, res) {
                 }
                 attempts.delete(key);
                 for (const [token, s] of sessions) if (s.expires < time) sessions.delete(token);
-                const token = crypto.randomBytes(32).toString('hex');
+                const token = crypto.randomBytes(32).toString('hex'),
+                    csrfToken = crypto.randomBytes(32).toString('base64url');
                 sessions.set(token, {
                     userId: user.id,
                     password: user.password,
+                    csrfToken,
                     expires: time + (input.remember ? 7 * 86400000 : 12 * 3600000)
                 });
-                setCookie(res, token, !!input.remember, !!req.socket?.encrypted);
-                return json(res, 200, view(user));
+                setCookie(
+                    res,
+                    token,
+                    !!input.remember,
+                    !!req.socket?.encrypted || process.env.MINIKIOT_SECURE_COOKIE === '1'
+                );
+                return json(res, 200, { ...view(user), csrfToken });
             }
             const user = sessionUser(req);
             if (!user) return json(res, 401, { success: false, error: 'Vui lòng đăng nhập.' });
+            const csrfToken = sessions.get(cookie(req)).csrfToken;
+            if (!['GET', 'HEAD'].includes(req.method)) {
+                const sent = Buffer.from(String(req.headers['x-minikiot-csrf'] || '')),
+                    expected = Buffer.from(csrfToken);
+                if (sent.length !== expected.length || !crypto.timingSafeEqual(sent, expected))
+                    return json(res, 403, {
+                        success: false,
+                        error: 'Mã bảo vệ phiên không hợp lệ. Hãy tải lại trang.'
+                    });
+            }
             if (url.pathname === '/api/data' && req.method === 'GET')
-                return json(res, 200, view(user));
+                return json(res, 200, { ...view(user), csrfToken });
             if (url.pathname.startsWith('/api/requests/') && req.method === 'GET') {
                 const requestId = url.pathname.slice('/api/requests/'.length);
                 const record = db
@@ -292,10 +314,14 @@ async function handler(req, res) {
         if (!file) return json(res, 404, { success: false, error: 'Không tìm thấy tài nguyên.' });
         const asset = await loadAsset(file);
         const gzip = acceptsGzip.has(res);
+        const contentTypes = {
+            '.html': 'text/html; charset=utf-8',
+            '.js': 'text/javascript; charset=utf-8',
+            '.css': 'text/css; charset=utf-8',
+            '.woff2': 'font/woff2'
+        };
         const headers = {
-            'Content-Type': file.endsWith('.html')
-                ? 'text/html; charset=utf-8'
-                : 'text/javascript; charset=utf-8',
+            'Content-Type': contentTypes[path.extname(file)] || 'application/octet-stream',
             'X-Content-Type-Options': 'nosniff',
             'Referrer-Policy': 'same-origin',
             'Cache-Control': 'no-cache',
@@ -334,4 +360,4 @@ if (require.main === module) {
         console.log(`MiniKiot: http://localhost:${process.env.PORT || 3000}`)
     );
 }
-module.exports = { createServer, handler };
+module.exports = { handler };

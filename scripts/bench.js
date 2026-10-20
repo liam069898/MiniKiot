@@ -175,7 +175,10 @@ async function main() {
                     }
                 },
                 cookie,
-                delta ? { 'x-minikiot-base': String(revision) } : {}
+                {
+                    'x-minikiot-csrf': JSON.parse(login.body).csrfToken,
+                    ...(delta ? { 'x-minikiot-base': String(revision) } : {})
+                }
             );
             if (res.status === 200) revision = JSON.parse(res.body).revision;
             return res;

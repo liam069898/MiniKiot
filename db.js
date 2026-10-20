@@ -235,7 +235,7 @@ function initDb() {
 
         d.exec(`CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY, requestId TEXT UNIQUE, userId TEXT NOT NULL, action TEXT NOT NULL, time TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS processed_requests (id TEXT PRIMARY KEY, userId TEXT NOT NULL, digest TEXT NOT NULL, result TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS processed_requests (id TEXT PRIMARY KEY, userId TEXT NOT NULL, digest TEXT NOT NULL, result TEXT NOT NULL, createdAt TEXT NOT NULL DEFAULT '');
       INSERT OR IGNORE INTO app_meta VALUES ('revision', '0');`);
         for (const table of ENTITY_TABLES) {
             const columns = d.prepare(`PRAGMA table_info(${table})`).all();
@@ -260,6 +260,17 @@ function initDb() {
             if (!process.env.MINIKIOT_ADMIN_PASSWORD)
                 console.log('Tài khoản admin mới. Mật khẩu dùng lần đầu:', password);
         }
+        try {
+            d.exec("ALTER TABLE processed_requests ADD COLUMN createdAt TEXT NOT NULL DEFAULT ''");
+        } catch {}
+        // Legacy rows have no timestamp; retention starts counting from this upgrade.
+        d.prepare("UPDATE processed_requests SET createdAt=? WHERE createdAt=''").run(
+            new Date().toISOString()
+        );
+        d.exec(
+            'CREATE INDEX IF NOT EXISTS processed_requests_createdAt ON processed_requests(createdAt)'
+        );
+        d.prepare("UPDATE products SET status='archived' WHERE status='inactive'").run();
         // Migrate existing credentials without changing the user's password or business data.
         for (const user of d.prepare('SELECT id, password FROM users').all()) {
             if (!user.password?.startsWith('scrypt$'))
@@ -268,7 +279,7 @@ function initDb() {
                     user.id
                 );
         }
-        d.prepare("INSERT OR REPLACE INTO app_meta VALUES ('schema_version', '2')").run();
+        d.prepare("INSERT OR REPLACE INTO app_meta VALUES ('schema_version', '3')").run();
         d.exec('COMMIT');
     } catch (error) {
         d.exec('ROLLBACK');
@@ -859,11 +870,6 @@ function saveAllData(data, withinTransaction = false, options = {}) {
     }
 }
 
-function resetDatabase() {
-    saveAllData(defaultData);
-    return getAllData();
-}
-
 function getStats() {
     const d = getDb();
     const stats = {};
@@ -936,7 +942,6 @@ function assertReadableRecords() {
 
 module.exports = {
     assertReadableRecords,
-    DB_PATH,
     ENTITY_TABLES,
     getDb,
     initDb,
@@ -944,6 +949,5 @@ module.exports = {
     readSnapshot,
     readForWrite,
     saveAllData,
-    resetDatabase,
     getStats
 };

@@ -17,20 +17,69 @@ function backupDatabase(source, destination) {
     return path.resolve(destination);
 }
 
-if (require.main === module) {
-    const source = process.env.MINIKIOT_DB_PATH || path.join(__dirname, 'minikiot.db');
-    const destination = process.argv[2];
-    if (!destination) {
-        console.error('Cách dùng: npm run backup -- /duong-dan/ban-sao.db');
-        process.exitCode = 1;
-    } else {
-        try {
-            console.log('Đã sao lưu:', backupDatabase(source, destination));
-        } catch (error) {
-            console.error('Sao lưu thất bại:', error.message);
-            process.exitCode = 1;
-        }
+// Validate independently before relying on a snapshot or removing older snapshots.
+function validateBackup(filename) {
+    if (!fs.existsSync(filename)) throw new Error('Không tìm thấy bản sao.');
+    const database = new DatabaseSync(filename, { readOnly: true });
+    try {
+        const integrity = database.prepare('PRAGMA integrity_check').all();
+        if (integrity.length !== 1 || integrity[0].integrity_check !== 'ok')
+            throw new Error('Bản sao không vượt qua integrity_check.');
+        for (const table of ['app_meta', 'users', 'products', 'invoices', 'audit_log'])
+            database.prepare(`SELECT count(*) FROM ${table}`).get();
+        return true;
+    } finally {
+        database.close();
     }
 }
 
-module.exports = { backupDatabase };
+function rotateBackups(source, directory, keep = 7) {
+    if (!Number.isSafeInteger(keep) || keep < 1) throw new Error('Số bản sao phải lớn hơn 0.');
+    const dir = path.resolve(directory);
+    if (!fs.statSync(dir).isDirectory()) throw new Error('Đường dẫn đích không phải thư mục.');
+    const filename = `minikiot-${new Date().toISOString().replace(/[:.]/g, '-')}-${require('node:crypto').randomBytes(4).toString('hex')}.db`;
+    const destination = path.join(dir, filename);
+    backupDatabase(source, destination);
+    try {
+        validateBackup(destination);
+    } catch (error) {
+        // An unverified file must never count as one of the retained good snapshots.
+        fs.unlinkSync(destination);
+        throw error;
+    }
+    const files = fs
+        .readdirSync(dir)
+        .filter((name) => /^minikiot-\d{4}-\d\d-\d\dT[\d-]+Z-[0-9a-f]{8}\.db$/.test(name))
+        .sort()
+        .reverse();
+    for (const old of files.slice(keep)) fs.unlinkSync(path.join(dir, old));
+    return destination;
+}
+
+if (require.main === module) {
+    const source = process.env.MINIKIOT_DB_PATH || path.join(__dirname, 'minikiot.db');
+    const [first, second, third] = process.argv.slice(2);
+    try {
+        if (first === '--verify' && second) {
+            validateBackup(second);
+            console.log('Bản sao hợp lệ:', path.resolve(second));
+        } else if (first === '--rotate' && second) {
+            const keep = third === undefined ? 7 : Number(third);
+            console.log('Đã sao lưu và kiểm tra:', rotateBackups(source, second, keep));
+        } else if (first && !first.startsWith('--')) {
+            const destination = backupDatabase(source, first);
+            validateBackup(destination);
+            console.log('Đã sao lưu và kiểm tra:', destination);
+        } else {
+            console.error(
+                'Cách dùng:\n  npm run backup -- /duong-dan/ban-sao.db\n  npm run backup -- --rotate /thu-muc-sao-luu [so-ban-giu=7]\n  npm run backup -- --verify /duong-dan/ban-sao.db'
+            );
+            process.exitCode = 1;
+        }
+    } catch (error) {
+        console.error('Sao lưu thất bại:', error.message);
+        process.exitCode = 1;
+    }
+}
+
+module.exports = { backupDatabase, validateBackup, rotateBackups };

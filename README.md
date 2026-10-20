@@ -18,7 +18,7 @@ Mở `http://localhost:3000`. Thiết bị cùng LAN dùng `http://<IP-máy-ch�
 - Với database có sẵn, tài khoản và mật khẩu đăng nhập được giữ nguyên; mật khẩu được chuyển sang dạng băm. Nên đổi các mật khẩu ngắn/mặc định còn lại.
 - Phiên đăng nhập nằm trong bộ nhớ máy chủ; khởi động lại máy chủ yêu cầu đăng nhập lại. Giao dịch chờ và khóa chống ghi trùng vẫn được lưu bền vững.
 
-Giao diện còn dùng Tailwind/font từ CDN và hình VietQR từ dịch vụ ngoài, nên cần Internet để tải đầy đủ những tài nguyên đó. Thanh toán chuyển khoản/thẻ là ghi nhận do thu ngân nhập; chưa có xác nhận tự động từ ngân hàng.
+Tailwind CSS và font Inter được phục vụ từ máy chủ. Hình VietQR vẫn lấy từ dịch vụ ngoài nên cần Internet để hiển thị. Thanh toán chuyển khoản/thẻ là ghi nhận do thu ngân nhập; chưa có xác nhận tự động từ ngân hàng.
 
 ## Nâng cấp từ bản cũ
 
@@ -47,12 +47,21 @@ npm run backup -- /duong-dan/ban-sao-2026-10-20.db
 
 Thư mục đích phải tồn tại và tên file phải mới. Lệnh không ghi đè file cũ. Có thể chạy khi máy chủ đang hoạt động. Giữ nhiều bản sao ở nơi khác với máy vận hành; không chỉ sao chép riêng file `.db` trong lúc đang chạy WAL.
 
+Tạo bản sao theo vòng quay, chỉ xóa bản cũ sau khi `integrity_check` và các bảng cốt lõi được đọc thành công:
+
+```bash
+npm run backup -- --rotate /duong-dan/thu-muc-sao-luu 14
+npm run backup -- --verify /duong-dan/thu-muc-sao-luu/minikiot-....db
+```
+
+Tham số cuối là số bản giữ lại, mặc định `7`. Đặt cron/systemd timer chạy lệnh rotation mỗi ngày. Sao chép thư mục snapshot đã kiểm tra sang máy/vùng lưu trữ khác; kiểm thử phục hồi định kỳ trên đường dẫn database tạm.
+
 Phục hồi:
 
 1. Dừng toàn bộ tiến trình đang sử dụng database.
 2. Giữ nguyên bộ file hiện tại (`.db`, `-wal`, `-shm`) trong một thư mục lưu riêng để có thể quay lại.
 3. Chép bản sao cần phục hồi thành một file `.db` mới, ở đường dẫn không có WAL/SHM cũ cùng tên.
-4. Đặt `MINIKIOT_DB_PATH` trỏ tới file phục hồi và chạy máy chủ. Kiểm tra số lượng chứng từ, tồn kho và công nợ trước khi tiếp tục bán.
+4. Chạy `npm run backup -- --verify /duong-dan/file-phuc-hoi.db`, đặt `MINIKIOT_DB_PATH` trỏ tới file phục hồi và chạy máy chủ. Kiểm tra số lượng chứng từ, tồn kho và công nợ trước khi tiếp tục bán.
 
 Nút xuất JSON trong giao diện chỉ xuất dữ liệu tài khoản được phép xem và không có mật khẩu. Đó không phải bản sao đầy đủ để khôi phục máy chủ.
 
@@ -76,4 +85,15 @@ Các module chính:
 - `client-store.js`, `ui-safety.js`, `app.js`: kết nối, phục hồi yêu cầu, render/in và giao diện.
 - `data.js`: dữ liệu ví dụ cho test và mặc định khởi tạo, không phục vụ ra trình duyệt. URL `/data.js` trả về `client-store.js`.
 
-Xem [trạng thái sửa lỗi](FIXES.md) và [báo cáo review ban đầu](CODE_REVIEW.md). Các bước phát triển tiếp theo: cập nhật từng bản ghi thay vì ghi lại snapshot phía server, phân trang dữ liệu, tách tiếp `app.js`, đóng gói tài nguyên CDN và kiểm thử thiết bị thực tế. Nếu triển khai ngoài LAN, cần cấu hình HTTPS và proxy phù hợp; máy chủ hiện chỉ phục vụ HTTP.
+Xem [trạng thái sửa lỗi](FIXES.md), [báo cáo review ban đầu](CODE_REVIEW.md) và [triển khai HTTPS/reverse proxy](DEPLOYMENT.md).
+
+## Bảo mật phiên và dữ liệu vận hành
+
+- API ghi (`POST`) sau đăng nhập yêu cầu header `X-MiniKiot-CSRF`, gắn với từng session. `client-store.js` tự gửi token; client/script tự viết cần lấy token từ `/api/login` hoặc `/api/data`.
+- Kết quả chống ghi trùng trong `processed_requests` giữ 30 ngày. Sau đó request cũ trùng `requestId` vẫn bị chặn nhờ `audit_log`; cần đối soát chứng từ thay vì gửi lại.
+- `audit_log` chưa tự xóa vì chưa có chính sách lưu trữ nghiệp vụ/pháp lý.
+- Chứng từ mới giữ `time` theo giờ máy chủ để hiển thị và thêm `createdAt` ISO UTC để sắp xếp, đối soát. Dữ liệu cũ không bị suy đoán giờ UTC.
+- Trạng thái hàng hóa chỉ dùng `active` / `archived`; giá trị cũ `inactive` được migrate sang `archived` khi khởi động.
+- Tailwind CSS và font Inter được phục vụ từ máy chủ. Sau khi sửa class trong `index.html`/`app.js`, chạy `npm run assets:build` và commit `public/tailwind.css`.
+
+Các bước phát triển tiếp theo: cập nhật từng bản ghi thay vì ghi lại snapshot phía server, phân trang dữ liệu, tách tiếp `app.js`, chuyển inline handler/script/style để bật CSP chặt và kiểm thử thiết bị thực tế.

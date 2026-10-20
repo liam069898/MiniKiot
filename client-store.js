@@ -66,6 +66,7 @@ const KVStore = {
     revision: null,
     isDbConnected: false,
     _busy: false,
+    csrfToken: null,
     _volatilePending: new Map(),
     async request(url, options = {}) {
         const controller = new AbortController();
@@ -75,7 +76,11 @@ const KVStore = {
                 credentials: 'same-origin',
                 ...options,
                 signal: controller.signal,
-                headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(this.csrfToken ? { 'X-MiniKiot-CSRF': this.csrfToken } : {}),
+                    ...(options.headers || {})
+                }
             });
             const json = await response.json();
             if (!response.ok) {
@@ -83,11 +88,13 @@ const KVStore = {
                 error.status = response.status;
                 if (error.status === 401) {
                     this.user = null;
+                    this.csrfToken = null;
                     this.isDbConnected = false;
                     showLoginScreen(true);
                 }
                 throw error;
             }
+            if (json.csrfToken) this.csrfToken = json.csrfToken;
             return json;
         } finally {
             clearTimeout(timeout);
@@ -274,19 +281,8 @@ const KVStore = {
         badge.onclick = () => forceSyncDatabase();
     },
     showRecovery() {
-        let button = document.getElementById('recovery-export');
-        if (!button) {
-            button = document.createElement('button');
-            button.id = 'recovery-export';
-            button.className =
-                'fixed bottom-3 left-3 z-[200] bg-amber-100 text-amber-900 rounded-xl p-3 shadow text-xs';
-            button.textContent = 'Tải dữ liệu cần đối soát';
-            button.onclick = () => this.download(this.recoveryData(), 'minikiot-doi-soat.json');
-            document.body.appendChild(button);
-        }
-        const data = this.recoveryData();
-        button.hidden =
-            !this.user || (!data.pending.length && !data.rejected.length && !data.legacy);
+        const button = document.getElementById('recovery-export');
+        if (button) button.remove();
     },
     recoveryData() {
         const rejected = [];

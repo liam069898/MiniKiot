@@ -30,6 +30,33 @@ function browser() {
     );
     return dom;
 }
+test('POS catalog, search and scanner exclude archived products', () => {
+    const dom = browser(),
+        w = dom.window;
+    try {
+        w.eval(`
+            const original = KVStore.data.products[0];
+            KVStore.data.products = [
+                {...original, id:'ACTIVE', code:'ACTIVE', name:'Active', status:'active'},
+                {...original, id:'ARCHIVE', code:'ARCHIVE', name:'Archived', status:'archived', barcode:'ARCHIVE-BAR'}
+            ];
+        `);
+        w.renderPosCatalog();
+        assert.ok(w.document.getElementById('pos-product-grid').textContent.includes('Active'));
+        assert.ok(!w.document.getElementById('pos-product-grid').textContent.includes('Archived'));
+        w.searchPosProducts('ARCHIVE');
+        assert.ok(
+            !w.document.getElementById('pos-product-dropdown').textContent.includes('Archived')
+        );
+        w.document.getElementById('pos-search-input').value = 'ARCHIVE-BAR';
+        w.handlePosSearchKeydown({ key: 'Enter', preventDefault() {} });
+        assert.equal(w.eval('state.posTabs[state.activePosTab].cart.length'), 0);
+        w.eval('addPosCartItem(KVStore.data.products[1])');
+        assert.equal(w.eval('state.posTabs[state.activePosTab].cart.length'), 0);
+    } finally {
+        w.close();
+    }
+});
 test('all views render with the shipped data', () => {
     const dom = browser();
     dom.window.renderAllViews();

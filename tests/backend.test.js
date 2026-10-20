@@ -272,7 +272,7 @@ test('transfer carries serials, rejects receive twice, updates weighted cost', (
 });
 test('receiving a discontinued product keeps it discontinued at the destination', () => {
     const d = db.getAllData();
-    d.products[0].status = 'inactive';
+    d.products[0].status = 'archived';
     db.saveAllData(d);
     const transfer = command('transfer', {
         fromBranch: 'A',
@@ -291,7 +291,7 @@ test('receiving a discontinued product keeps it discontinued at the destination'
     command('receive', { id: legacy.id });
     command('receive', { id: transfer.id });
     const dest = db.getAllData().products.find((p) => p.branch === 'B');
-    assert.equal(dest.status, 'inactive');
+    assert.equal(dest.status, 'archived');
     assert.equal(dest.stock, 2);
     assert.throws(() => sell({ branch: 'B' }), /ngừng kinh doanh/);
 });
@@ -391,9 +391,14 @@ test('login session hides credentials, enforces origin and invalidates after pas
     assert.ok(login.json.data.users.every((u) => !('password' in u)));
     const cookie = login.headers['set-cookie'].split(';')[0];
     assert.equal((await request('GET', '/api/data', undefined, cookie)).status, 200);
+    assert.equal((await request('POST', '/api/command', {}, cookie)).status, 403);
     assert.equal(
-        (await request('POST', '/api/command', {}, cookie, { origin: 'https://evil.example' }))
-            .status,
+        (
+            await request('POST', '/api/command', {}, cookie, {
+                origin: 'https://evil.example',
+                'x-minikiot-csrf': login.json.csrfToken
+            })
+        ).status,
         403
     );
     assert.equal(
@@ -402,7 +407,8 @@ test('login session hides credentials, enforces origin and invalidates after pas
                 'POST',
                 '/api/password',
                 { current: 'Test-password-123', next: 'Changed-password-456' },
-                cookie
+                cookie,
+                { 'x-minikiot-csrf': login.json.csrfToken }
             )
         ).status,
         200
@@ -537,6 +543,108 @@ test('backup captures WAL commits, is restorable, and refuses to overwrite files
     assert.throws(() => backupDatabase(process.env.MINIKIOT_DB_PATH, destination));
 });
 
+test('backup rotation validates every retained snapshot', () => {
+    const { rotateBackups, validateBackup } = require('../backup');
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'minikiot-rotation-'));
+    const first = rotateBackups(process.env.MINIKIOT_DB_PATH, directory, 1);
+    assert.equal(validateBackup(first), true);
+    const second = rotateBackups(process.env.MINIKIOT_DB_PATH, directory, 1);
+    assert.equal(validateBackup(second), true);
+    assert.equal(fs.readdirSync(directory).filter((name) => name.endsWith('.db')).length, 1);
+});
+test('status migration, createdAt and idempotency retention are applied', () => {
+    db.getDb().exec("UPDATE products SET status='inactive' WHERE id='SP'");
+    db.initDb();
+    assert.equal(db.getAllData().products[0].status, 'archived');
+    db.getDb().exec("UPDATE products SET status='active' WHERE id='SP'");
+    const requestId = crypto.randomUUID();
+    const { result } = command(
+        'sale',
+        { branch: 'A', items: [{ code: 'SP', qty: 1 }], given: 100000, paymentMethod: 'cash' },
+        app.revision(),
+        requestId
+    );
+    assert.match(result.createdAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
+    assert.match(result.time, /^\d\d\/\d\d\/\d{4} \d\d:\d\d$/);
+    const database = db.getDb();
+    database
+        .prepare(
+            'INSERT INTO processed_requests (id,userId,digest,result,createdAt) VALUES (?,?,?,?,?)'
+        )
+        .run('OLD', admin.id, 'digest', '{}', '2000-01-01T00:00:00.000Z');
+    sell();
+    assert.equal(
+        database.prepare("SELECT 1 FROM processed_requests WHERE id='OLD'").get(),
+        undefined
+    );
+    // Expired cached result: the audit row still blocks a second execution of the same request.
+    database.prepare('DELETE FROM processed_requests WHERE id=?').run(requestId);
+    assert.throws(
+        () =>
+            command(
+                'sale',
+                {
+                    branch: 'A',
+                    items: [{ code: 'SP', qty: 1 }],
+                    given: 100000,
+                    paymentMethod: 'cash'
+                },
+                app.revision(),
+                requestId
+            ),
+        { status: 409 }
+    );
+    assert.equal(db.getAllData().invoices.length, 2);
+});
+test('deterministic fuzz keeps stock, serials and failed commands consistent', () => {
+    let seed = 0x5eed;
+    const random = (n) => {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        return seed % n;
+    };
+    const dump = () => JSON.stringify(db.getAllData());
+    for (let step = 0; step < 150; step++) {
+        const data = db.getAllData(),
+            p = data.products[0],
+            invoices = data.invoices.filter((i) => i.status !== 'cancelled'),
+            before = dump();
+        try {
+            const kind = random(3);
+            if (kind === 0)
+                sell({
+                    items: [{ code: 'SP', qty: 1 + random(3) }],
+                    given: random(2) ? 1000000 : random(100000)
+                });
+            else if (kind === 1 && invoices.length)
+                command('return', {
+                    invoiceId: invoices[random(invoices.length)].id,
+                    items: [{ code: 'SP', qty: 1 + random(2) }]
+                });
+            else
+                command('import', {
+                    branch: 'A',
+                    supplierCode: 'S',
+                    paymentMethod: 'cash',
+                    paid: 0,
+                    items: [
+                        {
+                            code: 'SP',
+                            qty: 1,
+                            price: 50000,
+                            imeis: [random(4) ? `F${step}` : p.imeis[0] || `F${step}`]
+                        }
+                    ]
+                });
+        } catch (error) {
+            assert.ok(error.status >= 400 && error.status < 500, error.stack);
+            assert.equal(dump(), before, `step ${step} changed data after ${error.message}`);
+        }
+        const after = db.getAllData().products[0];
+        assert.ok(after.stock >= 0);
+        assert.equal(after.imeis.length, after.stock);
+        assert.equal(new Set(after.imeis).size, after.imeis.length);
+    }
+});
 test('discount rounding remains exact across partial returns of a large invoice', () => {
     const data = db.getAllData();
     data.products[0].price = 1000000000000001;
@@ -594,6 +702,23 @@ test('static assets support gzip and ETag revalidation', async () => {
     });
     assert.equal(revalidated.status, 304);
     assert.equal(revalidated.body, undefined);
+});
+test('local CSS and fonts are served with correct MIME types', async () => {
+    for (const [url, type] of [
+        ['/assets/tailwind.css', 'text/css'],
+        ['/assets/inter.css', 'text/css'],
+        ['/assets/inter-vietnamese-wght-normal.woff2', 'font/woff2'],
+        ['/assets/inter-latin-ext-wght-normal.woff2', 'font/woff2'],
+        ['/assets/inter-latin-wght-normal.woff2', 'font/woff2']
+    ]) {
+        const response = await request('GET', url);
+        assert.equal(response.status, 200);
+        assert.ok(response.headers['Content-Type'].startsWith(type));
+        assert.ok(response.body.length > 100);
+    }
+    const html = (await request('GET', '/')).body.toString();
+    assert.ok(!html.includes('cdn.tailwindcss.com'));
+    assert.ok(!html.includes('fonts.googleapis.com'));
 });
 test('diff-based save stores exactly what a full rewrite stores', () => {
     const d = db.getDb();
@@ -777,7 +902,10 @@ test('command response is a delta only when the client base matches the server r
                 }
             },
             cookie,
-            base === undefined ? {} : { 'x-minikiot-base': String(base) }
+            {
+                'x-minikiot-csrf': login.json.csrfToken,
+                ...(base === undefined ? {} : { 'x-minikiot-base': String(base) })
+            }
         );
     const rev = app.revision();
     const before = (await request('GET', '/api/data', undefined, cookie)).json.data;

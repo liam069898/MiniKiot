@@ -4,6 +4,8 @@ const db = require('./db');
 const { can, allowedBranches, publicUser, requirePermission, hashPassword } = require('./security');
 const { execute, fail, amount, branchOf } = require('./domain');
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Idempotency records must outlive any realistic offline/pending reconciliation window.
+const PROCESSED_REQUEST_RETENTION_MS = 30 * 86400000;
 const BRANCH_SCOPED = new Set([
     'products',
     'invoices',
@@ -452,6 +454,9 @@ function transact(user, envelope) {
             d.exec('COMMIT');
             return { result: JSON.parse(prior.result), replayed: true };
         }
+        // Audit entries outlive cached results; never execute an expired request a second time.
+        if (d.prepare('SELECT 1 FROM audit_log WHERE requestId=?').get(envelope.requestId))
+            fail('Kết quả giao dịch đã hết hạn lưu. Cần đối soát chứng từ trước khi gửi lại.', 409);
         if (envelope.revision !== revision())
             fail(
                 'Dữ liệu đã thay đổi ở máy khác. Hãy tải lại dữ liệu và kiểm tra trước khi thử lại.',
@@ -474,11 +479,12 @@ function transact(user, envelope) {
             new Date().toISOString()
         );
         d.prepare("UPDATE app_meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'").run();
-        d.prepare('INSERT INTO processed_requests VALUES (?,?,?,?)').run(
-            envelope.requestId,
-            user.id,
-            digest,
-            JSON.stringify(result)
+        const createdAt = new Date().toISOString();
+        d.prepare(
+            'INSERT INTO processed_requests (id,userId,digest,result,createdAt) VALUES (?,?,?,?,?)'
+        ).run(envelope.requestId, user.id, digest, JSON.stringify(result), createdAt);
+        d.prepare('DELETE FROM processed_requests WHERE createdAt < ?').run(
+            new Date(Date.parse(createdAt) - PROCESSED_REQUEST_RETENTION_MS).toISOString()
         );
         d.exec('COMMIT');
         return { result, replayed: false };
@@ -487,4 +493,4 @@ function transact(user, envelope) {
         throw e;
     }
 }
-module.exports = { project, revision, transact, validateRecord, diffViews };
+module.exports = { project, revision, transact, diffViews };
