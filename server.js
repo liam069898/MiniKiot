@@ -258,8 +258,25 @@ async function handler(req, res) {
                         success: false,
                         error: 'Phiên đăng nhập đã hết hiệu lực.'
                     });
+                // Client holding the view at revision `base` can take only the changed rows.
+                // `prior` is that view, rebuilt from the snapshot (same tick, before the write).
+                const base = Number(req.headers['x-minikiot-base']);
+                const priorRevision = application.revision();
+                const prior =
+                    base === priorRevision && envelope?.revision === base
+                        ? application.project(db.readSnapshot(), fresh)
+                        : null;
                 const result = application.transact(fresh, envelope);
-                return json(res, 200, { ...view(fresh), ...result });
+                const next = view(fresh);
+                // transact checks revision in its own write transaction, so a fresh (not replayed)
+                // commit at base+1 was applied on top of exactly the state `prior` was built from.
+                const delta =
+                    prior && !result.replayed && next.revision === base + 1
+                        ? application.diffViews(prior, next.data)
+                        : null;
+                if (!delta) return json(res, 200, { ...next, ...result });
+                const { data, ...rest } = next;
+                return json(res, 200, { ...rest, ...result, base, delta });
             }
             if (url.pathname === '/api/status' && req.method === 'GET') {
                 auth.requirePermission(user, 'settings');

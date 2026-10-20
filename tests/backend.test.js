@@ -270,6 +270,31 @@ test('transfer carries serials, rejects receive twice, updates weighted cost', (
     assert.deepEqual(dest.imeis, ['B1', 'I1']);
     assert.throws(() => command('receive', { id: transfer.id }));
 });
+test('receiving a discontinued product keeps it discontinued at the destination', () => {
+    const d = db.getAllData();
+    d.products[0].status = 'inactive';
+    db.saveAllData(d);
+    const transfer = command('transfer', {
+        fromBranch: 'A',
+        toBranch: 'B',
+        items: [{ code: 'SP', qty: 1 }]
+    }).result;
+    // Legacy transfer without a status snapshot falls back to the source product.
+    const legacy = command('transfer', {
+        fromBranch: 'A',
+        toBranch: 'B',
+        items: [{ code: 'SP', qty: 1 }]
+    }).result;
+    const raw = db.getAllData();
+    delete raw.transfers.find((t) => t.id === legacy.id).items[0].productSnapshot.status;
+    db.saveAllData(raw);
+    command('receive', { id: legacy.id });
+    command('receive', { id: transfer.id });
+    const dest = db.getAllData().products.find((p) => p.branch === 'B');
+    assert.equal(dest.status, 'inactive');
+    assert.equal(dest.stock, 2);
+    assert.throws(() => sell({ branch: 'B' }), /ngừng kinh doanh/);
+});
 test('stocktake draft cannot overwrite subsequent sales', () => {
     const st = command('stocktake', {
         branch: 'A',
@@ -693,4 +718,79 @@ test('JSON API responses are gzipped only when the client accepts it', async () 
     });
     assert.equal(small.status, 404);
     assert.equal(small.headers['Content-Encoding'], undefined);
+});
+test('view deltas rebuild the exact next view through the browser merge', () => {
+    const vm = require('node:vm');
+    const ctx = { FALLBACK_BRANCH: 'A', crypto: globalThis.crypto };
+    vm.runInNewContext(
+        fs.readFileSync(path.join(__dirname, '..', 'client-store.js'), 'utf8') +
+            ';this.applyDelta = applyDelta;',
+        Object.assign(ctx, { window: { addEventListener() {} } })
+    );
+    let seed = 11;
+    const rand = (n) => (seed = (seed * 1103515245 + 12345) % 2147483648) % n;
+    const row = (i) => ({ id: 'R' + i, v: rand(5) });
+    let n = 0;
+    for (let round = 0; round < 300; round++) {
+        const prev = {
+            settings: { a: rand(2) },
+            t: Array.from({ length: rand(30) }, () => row(n++))
+        };
+        const next = { settings: { a: rand(2) }, t: prev.t.map((r) => ({ ...r })) };
+        for (let k = rand(4); k >= 0; k--) {
+            const op = rand(6),
+                t = next.t;
+            if (op === 0) t.unshift(row(n++));
+            else if (op === 1) t.push(row(n++));
+            else if (op === 2 && t.length) t.splice(rand(t.length), 1);
+            else if (op === 3 && t.length) t[rand(t.length)].v = 9;
+            else if (op === 4 && t.length > 1) t.splice(1, 0, row(n++));
+            else if (op === 5) t.reverse();
+        }
+        const delta = app.diffViews(prev, next);
+        const merged = ctx.applyDelta(prev, JSON.parse(JSON.stringify(delta)));
+        assert.equal(JSON.stringify(merged), JSON.stringify(next), `round ${round}`);
+    }
+    assert.deepEqual(app.diffViews({ t: [{ id: 'X' }] }, { t: [{ id: 'X' }] }), {});
+    assert.equal(app.diffViews({ a: 1 }, { b: 1 }), null);
+    assert.throws(() => ctx.applyDelta({ t: [] }, { t: { remove: ['X'], length: 1 } }));
+});
+test('command response is a delta only when the client base matches the server revision', async () => {
+    const login = await request('POST', '/api/login', {
+        username: 'admin',
+        password: 'Test-password-123'
+    });
+    const cookie = login.headers['set-cookie'].split(';')[0];
+    const sale = (base, rev = app.revision()) =>
+        request(
+            'POST',
+            '/api/command',
+            {
+                type: 'sale',
+                requestId: crypto.randomUUID(),
+                revision: rev,
+                payload: {
+                    branch: 'A',
+                    items: [{ code: 'SP', qty: 1 }],
+                    given: 100000,
+                    paymentMethod: 'cash'
+                }
+            },
+            cookie,
+            base === undefined ? {} : { 'x-minikiot-base': String(base) }
+        );
+    const rev = app.revision();
+    const before = (await request('GET', '/api/data', undefined, cookie)).json.data;
+    const withDelta = await sale(rev);
+    assert.equal(withDelta.status, 200);
+    assert.equal(withDelta.json.data, undefined);
+    assert.equal(withDelta.json.base, rev);
+    assert.equal(withDelta.json.revision, rev + 1);
+    assert.equal(withDelta.json.delta.invoices.prepend.length, 1);
+    assert.equal(withDelta.json.delta.products.update[0].stock, before.products[0].stock - 1);
+    assert.ok(withDelta.json.result.code);
+    const legacy = await sale(undefined);
+    assert.ok(legacy.json.data && !legacy.json.delta);
+    const stale = await sale(rev);
+    assert.ok(stale.json.data && !stale.json.delta);
 });

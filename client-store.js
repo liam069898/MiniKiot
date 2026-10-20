@@ -27,6 +27,33 @@ const defaultData = {
 };
 const copyData = (value) => JSON.parse(JSON.stringify(value));
 const PENDING_PREFIX = 'minikiot.pending.';
+// Applies a server delta (see diffViews in application.js) to a view and returns the new view.
+// `base` is not modified. Throws if the result does not match the shape the server reported, so
+// the caller can fall back to a full reload instead of keeping a silently diverged copy.
+function applyDelta(base, delta) {
+    const next = { ...base };
+    for (const [key, change] of Object.entries(delta)) {
+        if (Object.hasOwn(change, 'value')) next[key] = change.value;
+        else if (Object.hasOwn(change, 'rows')) next[key] = change.rows;
+        else {
+            if (!Array.isArray(base[key])) throw new Error('Delta không khớp: ' + key);
+            const removed = new Set(change.remove || []),
+                updates = new Map((change.update || []).map((r) => [r.id, r]));
+            let applied = 0;
+            const kept = [];
+            for (const row of base[key]) {
+                if (removed.has(row.id)) continue;
+                const updated = updates.get(row.id);
+                if (updated) applied++;
+                kept.push(updated || row);
+            }
+            next[key] = [...(change.prepend || []), ...kept, ...(change.append || [])];
+            if (applied !== updates.size || next[key].length !== change.length)
+                throw new Error('Delta không khớp: ' + key);
+        }
+    }
+    return next;
+}
 function makeCode(prefix = 'TX') {
     const bytes = new Uint8Array(16);
     crypto.getRandomValues(bytes);
@@ -67,10 +94,23 @@ const KVStore = {
         }
     },
     adopt(json) {
+        this.adoptBase(json, copyData(json.data));
+    },
+    // Command responses may carry only changed rows relative to the view at `json.base`.
+    async adoptResult(json) {
+        if (!json.delta) return this.adopt(json);
+        try {
+            if (json.base !== this.revision) throw new Error('Delta base mismatch');
+            this.adoptBase(json, applyDelta(this._base, json.delta));
+        } catch {
+            this.adopt(await this.request('/api/data'));
+        }
+    },
+    adoptBase(json, base) {
         this.user = json.user;
         this.revision = json.revision;
-        this._base = copyData(json.data);
-        this.data = copyData(json.data);
+        this._base = base;
+        this.data = copyData(base);
         this.isDbConnected = true;
         const allowed =
             this.user.role === 'admin'
@@ -177,12 +217,13 @@ const KVStore = {
             const result = pending.envelope
                 ? await this.request('/api/command', {
                       method: 'POST',
+                      headers: { 'X-MiniKiot-Base': String(this.revision) },
                       body: JSON.stringify(pending.envelope)
                   })
                 : await this.request('/api/requests/' + encodeURIComponent(pending.requestId));
             localStorage.removeItem(key);
             this._volatilePending.delete(pending.requestId);
-            this.adopt(result);
+            await this.adoptResult(result);
             if (typeof state !== 'undefined') {
                 const tab = state.posTabs.find((t) => t.pendingRequestId === pending.requestId);
                 if (tab) {

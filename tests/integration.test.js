@@ -13,6 +13,7 @@ process.env.MINIKIOT_DB_PATH = path.join(
 );
 process.env.MINIKIOT_ADMIN_PASSWORD = 'Test-password-123';
 const db = require('../db'),
+    application = require('../application'),
     { handler } = require('../server');
 const { hashPassword } = require('../security');
 const seed = () => {
@@ -87,13 +88,21 @@ function browser() {
     w.prompt = () => null;
     w.print = () => {};
     let cookie = '';
-    const bridge = { loseNextCommand: false };
+    const bridge = { loseNextCommand: false, commands: [] };
     w.fetch = async (url, options = {}) =>
         new Promise((resolve, reject) => {
             const req = new PassThrough();
             req.method = options.method || 'GET';
             req.url = url;
-            req.headers = { host: 'localhost', 'content-type': 'application/json', cookie };
+            const extra = Object.fromEntries(
+                Object.entries(options.headers || {}).map(([k, v]) => [k.toLowerCase(), v])
+            );
+            req.headers = {
+                ...extra,
+                host: 'localhost',
+                'content-type': 'application/json',
+                cookie
+            };
             req.socket = { remoteAddress: '127.0.0.1' };
             const response = {
                 headersSent: false,
@@ -105,6 +114,7 @@ function browser() {
                     this.headersSent = true;
                 },
                 end(body) {
+                    if (url === '/api/command') bridge.commands.push(JSON.parse(body));
                     if (url === '/api/command' && bridge.loseNextCommand) {
                         bridge.loseNextCommand = false;
                         reject(new Error('Response lost'));
@@ -161,6 +171,42 @@ test('real login -> POS -> discounted credit return persists correct inventory, 
         assert.equal(d.customers[0].debt, 0);
         assert.equal(d.returns[0].totalRefund, 30000);
         assert.equal(d.returns[0].returnValue, 80000);
+    } finally {
+        b.close();
+    }
+});
+test('command responses carry only changed rows and the browser ends with the exact server view', async () => {
+    const b = browser();
+    try {
+        await login(b);
+        const serverView = () => {
+            const snap = db.readSnapshot();
+            return JSON.stringify(
+                application.project(
+                    snap,
+                    snap.users.find((u) => u.id === 'ADMIN')
+                )
+            );
+        };
+        cart(b.w);
+        b.w.eval('selectPosCustomer(KVStore.data.customers[0])');
+        await b.w.checkoutPos();
+        b.w.openReturnModal(db.getAllData().invoices[0].code);
+        await b.w.submitReturnGoods();
+        assert.equal(b.bridge.commands.length, 2);
+        for (const response of b.bridge.commands) {
+            assert.ok(response.delta, 'delta response');
+            assert.equal(response.data, undefined);
+            assert.equal(response.revision, response.base + 1);
+        }
+        assert.ok(b.bridge.commands[0].delta.invoices.prepend);
+        assert.equal(b.w.eval('JSON.stringify(KVStore._base)'), serverView());
+        assert.equal(b.w.eval('KVStore.revision'), application.revision());
+        // A delta that does not fit the local base must fall back to a full reload.
+        await b.w.eval(
+            "KVStore.adoptResult({user: KVStore.user, revision: KVStore.revision, base: KVStore.revision, delta: {invoices: {remove: ['NOPE'], length: 0}}})"
+        );
+        assert.equal(b.w.eval('JSON.stringify(KVStore._base)'), serverView());
     } finally {
         b.close();
     }

@@ -43,6 +43,79 @@ function project(data, user) {
     result.recentActivities = (data.recentActivities || []).filter((r) => branches.has(r.branch));
     return result;
 }
+// Delta between two projected views, so a command response only carries rows that changed.
+// Per array table: `rows` (full replacement) or { remove, update, prepend, append, length }.
+// Rows are compared by value because derived fields (returned totals, customer aggregates) can
+// change on rows the command never touched. `same` walks JSON-shaped values without allocating,
+// which is several times faster than stringifying every row.
+function same(a, b) {
+    if (a === b) return true;
+    if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+    if (Array.isArray(a)) {
+        if (!Array.isArray(b) || a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) if (!same(a[i], b[i])) return false;
+        return true;
+    }
+    if (Array.isArray(b)) return false;
+    // Key order matters: the client compares by JSON text, so reordered keys count as a change.
+    const ka = Object.keys(a),
+        kb = Object.keys(b);
+    if (ka.length !== kb.length) return false;
+    for (let i = 0; i < ka.length; i++)
+        if (ka[i] !== kb[i] || !same(a[ka[i]], b[kb[i]])) return false;
+    return true;
+}
+function diffTable(prev, next) {
+    const full = { rows: next };
+    const ids = (rows) => {
+        const map = new Map();
+        for (const r of rows) {
+            if (!r || typeof r.id !== 'string' || map.has(r.id)) return null;
+            map.set(r.id, r);
+        }
+        return map;
+    };
+    const before = ids(prev),
+        after = ids(next);
+    if (!before || !after) return full;
+    const remove = prev.filter((r) => !after.has(r.id)).map((r) => r.id);
+    const kept = next.filter((r) => before.has(r.id));
+    const order = prev.filter((r) => after.has(r.id));
+    if (kept.some((r, i) => r.id !== order[i].id)) return full;
+    // New rows must sit entirely before or after the kept block; anything else is a full send.
+    let first = next.findIndex((r) => before.has(r.id));
+    if (first < 0) first = next.length;
+    const last = first + kept.length;
+    if (next.slice(first, last).some((r) => !before.has(r.id))) return full;
+    const update = kept.filter((r) => !same(r, before.get(r.id)));
+    const prepend = next.slice(0, first),
+        append = next.slice(last);
+    if (!remove.length && !update.length && !prepend.length && !append.length) return null;
+    const delta = { length: next.length };
+    if (remove.length) delta.remove = remove;
+    if (update.length) delta.update = update;
+    if (prepend.length) delta.prepend = prepend;
+    if (append.length) delta.append = append;
+    // A delta bigger than half the table is not worth the client-side merge.
+    return update.length + prepend.length + append.length > next.length / 2 && next.length > 20
+        ? full
+        : delta;
+}
+function diffViews(prev, next) {
+    const keys = Object.keys(next);
+    if (Object.keys(prev).length !== keys.length || keys.some((k) => !Object.hasOwn(prev, k)))
+        return null;
+    const delta = {};
+    for (const key of keys) {
+        const a = prev[key],
+            b = next[key];
+        if (Array.isArray(a) && Array.isArray(b)) {
+            const d = diffTable(a, b);
+            if (d) delta[key] = d;
+        } else if (!same(a, b)) delta[key] = { value: b };
+    }
+    return delta;
+}
 function revision() {
     return Number(
         db.getDb().prepare("SELECT value FROM app_meta WHERE key='revision'").get().value
@@ -414,4 +487,4 @@ function transact(user, envelope) {
         throw e;
     }
 }
-module.exports = { project, revision, transact, validateRecord };
+module.exports = { project, revision, transact, validateRecord, diffViews };

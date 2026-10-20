@@ -561,7 +561,8 @@ function transfer(data, user, input) {
                 category: p.category,
                 price: p.price,
                 barcode: p.barcode,
-                minStock: p.minStock
+                minStock: p.minStock,
+                status: p.status
             }
         };
     });
@@ -606,7 +607,8 @@ function receive(data, user, input) {
                 branch: record.toBranch,
                 hasImei: !!item.hasImei,
                 imeis: [],
-                status: 'active'
+                // Transfers created before status was snapshotted fall back to the source product.
+                status: item.productSnapshot?.status ?? source?.status ?? 'active'
             };
             data.products.push(p);
         }

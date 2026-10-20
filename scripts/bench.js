@@ -157,27 +157,29 @@ async function main() {
         request('GET', '/api/data', undefined, cookie, { 'accept-encoding': 'gzip' })
     );
     let revision = JSON.parse((await request('GET', '/api/data', undefined, cookie)).body).revision;
-    await time('POST /api/command (sale)', async () => {
-        const res = await request(
-            'POST',
-            '/api/command',
-            {
-                type: 'sale',
-                requestId: crypto.randomUUID(),
-                revision,
-                payload: {
-                    branch,
-                    items: [{ code: 'P1', qty: 1 }],
-                    discount: 0,
-                    given: 100000,
-                    paymentMethod: 'cash'
-                }
-            },
-            cookie
-        );
-        if (res.status === 200) revision = JSON.parse(res.body).revision;
-        return res;
-    });
+    for (const delta of [false, true])
+        await time(`POST /api/command (sale${delta ? ', delta' : ''})`, async () => {
+            const res = await request(
+                'POST',
+                '/api/command',
+                {
+                    type: 'sale',
+                    requestId: crypto.randomUUID(),
+                    revision,
+                    payload: {
+                        branch,
+                        items: [{ code: 'P1', qty: 1 }],
+                        discount: 0,
+                        given: 100000,
+                        paymentMethod: 'cash'
+                    }
+                },
+                cookie,
+                delta ? { 'x-minikiot-base': String(revision) } : {}
+            );
+            if (res.status === 200) revision = JSON.parse(res.body).revision;
+            return res;
+        });
     await time('GET /app.js', () => request('GET', '/app.js'));
     await time('GET /app.js (gzip)', () =>
         request('GET', '/app.js', undefined, undefined, { 'accept-encoding': 'gzip' })
