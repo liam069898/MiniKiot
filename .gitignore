@@ -1,0 +1,8 @@
+node_modules/
+*.db
+*.db-wal
+*.db-shm
+*.bak
+.env
+.DS_Store
+coverage/

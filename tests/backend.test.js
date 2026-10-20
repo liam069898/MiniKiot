@@ -1,0 +1,534 @@
+'use strict';
+const { test, before, after, beforeEach } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs'),
+    os = require('node:os'),
+    path = require('node:path'),
+    crypto = require('node:crypto');
+const { PassThrough } = require('node:stream');
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'minikiot-test-'));
+process.env.MINIKIOT_DB_PATH = path.join(dir, 'test.db');
+process.env.MINIKIOT_ADMIN_PASSWORD = 'Test-password-123';
+const db = require('../db'),
+    { hashPassword } = require('../security'),
+    app = require('../application'),
+    { handler } = require('../server');
+const { defaultData } = require('../data');
+let admin;
+function fixture() {
+    const d = JSON.parse(JSON.stringify(defaultData));
+    for (const k of db.ENTITY_TABLES) d[k] = [];
+    d.branches = [
+        { id: 'A', code: 'A', name: 'A' },
+        { id: 'B', code: 'B', name: 'B' }
+    ];
+    d.settings = { ...defaultData.settings, branch: 'A' };
+    d.products = [
+        {
+            id: 'SP',
+            code: 'SP',
+            name: 'Product',
+            branch: 'A',
+            stock: 3,
+            price: 100000,
+            costPrice: 50000,
+            unit: 'Chiếc',
+            category: 'Test',
+            status: 'active',
+            hasImei: true,
+            imeis: ['I1', 'I2', 'I3'],
+            minStock: 0
+        }
+    ];
+    d.customers = [
+        { id: 'C', code: 'C', name: 'Customer', phone: '000', debt: 0, totalSpent: 0, points: 0 }
+    ];
+    d.suppliers = [{ id: 'S', code: 'S', name: 'Supplier', phone: '', debt: 0, totalBought: 0 }];
+    d.users = [
+        {
+            id: 'ADMIN',
+            code: 'ADMIN',
+            name: 'Admin',
+            username: 'admin',
+            password: hashPassword('Test-password-123'),
+            role: 'admin',
+            status: 'active',
+            permissions: {},
+            branch: 'A',
+            branches: ['A', 'B']
+        }
+    ];
+    return d;
+}
+function command(
+    type,
+    payload,
+    revision = app.revision(),
+    requestId = crypto.randomUUID(),
+    user = admin
+) {
+    return app.transact(user, { type, payload, revision, requestId });
+}
+const sell = (opts = {}) =>
+    command('sale', {
+        branch: 'A',
+        items: [{ code: 'SP', qty: 1 }],
+        discount: 0,
+        given: 100000,
+        paymentMethod: 'cash',
+        ...opts
+    }).result;
+async function request(method, url, input, cookie, extraHeaders = {}) {
+    return new Promise((resolve, reject) => {
+        const req = new PassThrough();
+        req.method = method;
+        req.url = url;
+        req.headers = {
+            host: 'localhost',
+            'content-type': 'application/json',
+            ...(cookie ? { cookie } : {}),
+            ...extraHeaders
+        };
+        req.socket = { remoteAddress: '127.0.0.1' };
+        const headers = {};
+        const res = {
+            headersSent: false,
+            setHeader(k, v) {
+                headers[k.toLowerCase()] = v;
+            },
+            writeHead(status, h) {
+                this.status = status;
+                Object.assign(headers, h);
+                this.headersSent = true;
+            },
+            end(body) {
+                let json;
+                try {
+                    json = JSON.parse(body);
+                } catch {}
+                resolve({ status: this.status, headers, body, json });
+            }
+        };
+        handler(req, res).catch(reject);
+        req.end(input === undefined ? '' : JSON.stringify(input));
+    });
+}
+before(() => db.initDb());
+beforeEach(() => {
+    db.saveAllData(fixture());
+    db.getDb().exec('DELETE FROM processed_requests');
+    admin = db.getAllData().users[0];
+});
+after(() => db.getDb().close());
+test('empty catalog survives restart and passwords are migrated', () => {
+    const d = db.getAllData();
+    d.products = [];
+    d.invoices = [{ id: 'KEEP', code: 'KEEP', items: [], total: 0 }];
+    d.users[0].password = 'legacy';
+    db.saveAllData(d);
+    db.initDb();
+    assert.equal(db.getAllData().invoices[0].id, 'KEEP');
+    assert.match(db.getAllData().users[0].password, /^scrypt\$/);
+});
+test('all extended invoice/customer fields survive SQLite roundtrip', () => {
+    const d = db.getAllData();
+    d.invoices = [
+        {
+            id: 'I',
+            code: 'I',
+            items: [],
+            paymentMethod: 'card',
+            customerId: 'C',
+            note: 'n',
+            hasReturned: true,
+            cancelReason: 'r',
+            cancelTime: 't',
+            returnedTotal: 123
+        }
+    ];
+    d.customers[0].note = 'customer note';
+    db.saveAllData(d);
+    assert.equal(db.getAllData().invoices[0].returnedTotal, 123);
+    assert.equal(db.getAllData().invoices[0].paymentMethod, 'card');
+    assert.equal(db.getAllData().customers[0].note, 'customer note');
+});
+test('stale snapshot is rejected, preserving committed invoice', () => {
+    const rev = app.revision(),
+        old = app.project(db.getAllData(), admin);
+    sell();
+    old.customers[0].name = 'changed';
+    assert.throws(
+        () => command('edit', old, rev),
+        (e) => e.status === 409
+    );
+    assert.equal(db.getAllData().invoices.length, 1);
+});
+test('same request retries once, different payload cannot reuse id', () => {
+    const id = crypto.randomUUID(),
+        rev = app.revision(),
+        payload = {
+            branch: 'A',
+            items: [{ code: 'SP', qty: 1 }],
+            discount: 0,
+            given: 100000,
+            paymentMethod: 'cash'
+        };
+    command('sale', payload, rev, id);
+    assert.equal(command('sale', payload, rev, id).replayed, true);
+    assert.equal(db.getAllData().invoices.length, 1);
+    assert.throws(
+        () => command('sale', { ...payload, given: 0 }, rev, id),
+        (e) => e.status === 409
+    );
+});
+test('stock and retail underpayment failures leave no partial changes', () => {
+    assert.throws(() => sell({ items: [{ code: 'SP', qty: 4 }], given: 400000 }));
+    assert.throws(() => sell({ given: 0 }));
+    const d = db.getAllData();
+    assert.equal(d.products[0].stock, 3);
+    assert.equal(d.products[0].imeis.length, 3);
+    assert.equal(d.invoices.length, 0);
+    assert.equal(d.cashbook.length, 0);
+});
+test('sale snapshots serial and historic cost; discounted credit return settles debt first', () => {
+    const inv = sell({ discount: 20000, given: 30000, customerId: 'C' });
+    assert.deepEqual(inv.items[0].imeis, ['I1']);
+    assert.equal(inv.items[0].costPrice, 50000);
+    const r = command('return', {
+        invoiceId: inv.id,
+        items: [{ code: 'SP', qty: 1 }],
+        refundMethod: 'cash'
+    }).result;
+    assert.equal(r.totalRefund, 30000);
+    assert.equal(r.returnValue, 80000);
+    assert.equal(r.debtReduction, 50000);
+    const d = db.getAllData();
+    assert.equal(d.customers[0].debt, 0);
+    assert.equal(d.customers[0].totalSpent, 0);
+    assert.equal(d.products[0].stock, 3);
+    assert.deepEqual(d.products[0].imeis.sort(), ['I1', 'I2', 'I3']);
+    assert.throws(() => command('return', { invoiceId: inv.id, items: [{ code: 'SP', qty: 1 }] }));
+    command('cancel', { invoiceId: inv.id });
+    assert.equal(db.getAllData().products[0].stock, 3);
+    assert.equal(db.getAllData().cashbook.filter((c) => c.type === 'chi').length, 1);
+});
+test('partial return then cancel refunds only remainder', () => {
+    const inv = sell({ items: [{ code: 'SP', qty: 3 }], discount: 10000, given: 290000 });
+    command('return', { invoiceId: inv.id, items: [{ code: 'SP', qty: 1 }] });
+    command('cancel', { invoiceId: inv.id });
+    const d = db.getAllData();
+    assert.equal(
+        d.cashbook.filter((c) => c.type === 'chi').reduce((s, c) => s + c.amount, 0),
+        290000
+    );
+    assert.equal(d.products[0].stock, 3);
+    assert.throws(() => command('cancel', { invoiceId: inv.id }));
+});
+test('customer id prevents cancellation against another customer with same name', () => {
+    const d = db.getAllData();
+    d.customers.unshift({
+        ...d.customers[0],
+        id: 'OTHER',
+        code: 'OTHER',
+        phone: '999',
+        debt: 300000
+    });
+    db.saveAllData(d);
+    const inv = sell({ given: 0, customerId: 'C' });
+    command('cancel', { invoiceId: inv.id });
+    const after = db.getAllData();
+    assert.equal(after.customers.find((c) => c.id === 'OTHER').debt, 300000);
+    assert.equal(after.customers.find((c) => c.id === 'C').debt, 0);
+});
+test('debt collection allocates invoice payments and later cancel returns collected money', () => {
+    const inv = sell({ given: 0, customerId: 'C' });
+    command('debt', { branch: 'A', partnerId: 'C', type: 'thu', amount: 100000, method: 'cash' });
+    assert.equal(db.getAllData().invoices[0].paid, 100000);
+    command('cancel', { invoiceId: inv.id });
+    assert.equal(db.getAllData().cashbook.find((c) => c.type === 'chi').amount, 100000);
+});
+test('transfer carries serials, rejects receive twice, updates weighted cost', () => {
+    const d = db.getAllData();
+    d.products.push({
+        ...d.products[0],
+        id: 'BSP',
+        branch: 'B',
+        stock: 1,
+        costPrice: 100000,
+        imeis: ['B1']
+    });
+    db.saveAllData(d);
+    const transfer = command('transfer', {
+        fromBranch: 'A',
+        toBranch: 'B',
+        items: [{ code: 'SP', qty: 1 }]
+    }).result;
+    assert.equal(db.getAllData().products.find((p) => p.branch === 'A').imeis.length, 2);
+    command('receive', { id: transfer.id });
+    const dest = db.getAllData().products.find((p) => p.branch === 'B');
+    assert.equal(dest.costPrice, 75000);
+    assert.deepEqual(dest.imeis, ['B1', 'I1']);
+    assert.throws(() => command('receive', { id: transfer.id }));
+});
+test('stocktake draft cannot overwrite subsequent sales', () => {
+    const st = command('stocktake', {
+        branch: 'A',
+        items: [{ code: 'SP', systemStock: 3, actualStock: 3 }],
+        balance: false
+    }).result;
+    sell();
+    assert.throws(
+        () => command('stocktake', { id: st.id, balance: true }),
+        (e) => e.status === 409
+    );
+    assert.equal(db.getAllData().products[0].stock, 2);
+});
+test('import rejects duplicate serial across warehouses and invalid amounts', () => {
+    assert.throws(() =>
+        command('import', {
+            branch: 'A',
+            supplierCode: 'S',
+            items: [{ code: 'SP', qty: 1, price: 50000, hasImei: true, imeis: ['I1'] }],
+            paid: 50000,
+            paymentMethod: 'cash'
+        })
+    );
+    assert.throws(() => sell({ discount: -1 }));
+    assert.throws(() => sell({ given: Infinity }));
+});
+test('generic edit cannot forge financial records or bypass table permissions', () => {
+    const data = app.project(db.getAllData(), admin);
+    data.invoices = [{ id: 'bad', items: 'not-json' }];
+    assert.throws(
+        () => command('edit', data),
+        (e) => e.status === 403
+    );
+    assert.equal(db.getAllData().invoices.length, 0);
+    const warehouse = {
+        ...admin,
+        id: 'W',
+        role: 'warehouse',
+        branch: 'A',
+        branches: ['A'],
+        permissions: { products: true },
+        status: 'active',
+        username: 'warehouse',
+        code: 'W'
+    };
+    const withWarehouse = db.getAllData();
+    withWarehouse.users.push(warehouse);
+    db.saveAllData(withWarehouse);
+    assert.throws(() => sell.call(null, { branch: 'B' }));
+    assert.throws(
+        () =>
+            command(
+                'sale',
+                { branch: 'A', items: [] },
+                app.revision(),
+                crypto.randomUUID(),
+                warehouse
+            ),
+        (e) => e.status === 403
+    );
+});
+test('catalog edits preserve passwords and reject duplicate codes', () => {
+    const input = app.project(db.getAllData(), admin);
+    input.users[0].name = 'New name';
+    command('edit', input);
+    assert.match(db.getAllData().users[0].password, /^scrypt\$/);
+    const dup = app.project(db.getAllData(), admin);
+    dup.products.push({ ...dup.products[0], id: 'OTHER' });
+    assert.throws(() => command('edit', dup));
+});
+test('HTTP routes deny unauthenticated reads/writes and database downloads', async () => {
+    for (const url of ['/api/data', '/api/status'])
+        assert.equal((await request('GET', url)).status, 401);
+    assert.equal((await request('POST', '/api/reset', {})).status, 401);
+    for (const url of [
+        '/minikiot.db',
+        '/minikiot.db-wal',
+        '/db.js',
+        '/data.js.map',
+        '/CODE_REVIEW.md'
+    ])
+        assert.equal((await request('GET', url)).status, 404);
+    const script = await request('GET', '/data.js');
+    assert.equal(script.status, 200);
+    assert.ok(!script.body.toString().includes("password: '123'"));
+});
+test('login session hides credentials, enforces origin and invalidates after password change', async () => {
+    const login = await request('POST', '/api/login', {
+        username: 'admin',
+        password: 'Test-password-123'
+    });
+    assert.equal(login.status, 200);
+    assert.ok(!('password' in login.json.user));
+    assert.ok(login.json.data.users.every((u) => !('password' in u)));
+    const cookie = login.headers['set-cookie'].split(';')[0];
+    assert.equal((await request('GET', '/api/data', undefined, cookie)).status, 200);
+    assert.equal(
+        (await request('POST', '/api/command', {}, cookie, { origin: 'https://evil.example' }))
+            .status,
+        403
+    );
+    assert.equal(
+        (
+            await request(
+                'POST',
+                '/api/password',
+                { current: 'Test-password-123', next: 'Changed-password-456' },
+                cookie
+            )
+        ).status,
+        200
+    );
+    assert.equal((await request('GET', '/api/data', undefined, cookie)).status, 401);
+});
+
+test('branch permissions and revoked sessions are enforced by the server', async () => {
+    const data = db.getAllData();
+    const cashier = {
+        ...admin,
+        id: 'LIMITED',
+        code: 'LIMITED',
+        username: 'limited',
+        role: 'cashier',
+        branch: 'A',
+        branches: ['A'],
+        permissions: { pos: true, invoices: true }
+    };
+    data.users.push(cashier);
+    data.products.push({ ...data.products[0], id: 'BSP', branch: 'B', imeis: ['B1', 'B2', 'B3'] });
+    db.saveAllData(data);
+    const projected = app.project(data, cashier);
+    assert.equal(projected.products.length, 1);
+    assert.equal(projected.users.length, 0);
+    assert.throws(
+        () =>
+            command(
+                'sale',
+                {
+                    branch: 'B',
+                    items: [{ code: 'SP', qty: 1 }],
+                    given: 100000,
+                    paymentMethod: 'cash'
+                },
+                app.revision(),
+                crypto.randomUUID(),
+                cashier
+            ),
+        (e) => e.status === 403
+    );
+    const login = await request('POST', '/api/login', {
+        username: 'limited',
+        password: 'Test-password-123'
+    });
+    const cookie = login.headers['set-cookie'].split(';')[0];
+    db.getDb().prepare("UPDATE users SET status='locked' WHERE id='LIMITED'").run();
+    assert.equal((await request('GET', '/api/data', undefined, cookie)).status, 401);
+});
+
+test('staff managers cannot grant privileges or modify administrators', () => {
+    const data = db.getAllData();
+    const manager = {
+        ...admin,
+        id: 'M',
+        code: 'M',
+        username: 'manager',
+        role: 'manager',
+        branch: 'A',
+        branches: ['A'],
+        permissions: { users: true }
+    };
+    data.users.push(manager);
+    db.saveAllData(data);
+    const elevated = app.project(db.getAllData(), manager);
+    elevated.users.find((u) => u.id === 'M').permissions.cashbook = true;
+    assert.throws(
+        () => command('edit', elevated, app.revision(), crypto.randomUUID(), manager),
+        (e) => e.status === 403
+    );
+    const editAdmin = app.project(db.getAllData(), manager);
+    editAdmin.users.find((u) => u.id === 'ADMIN').name = 'Changed';
+    assert.throws(
+        () => command('edit', editAdmin, app.revision(), crypto.randomUUID(), manager),
+        (e) => e.status === 403
+    );
+    const noAdmin = app.project(db.getAllData(), admin);
+    noAdmin.users[0].role = 'manager';
+    assert.throws(() => command('edit', noAdmin));
+    assert.equal(db.getAllData().users[0].role, 'admin');
+});
+
+test('in-transit serials cannot be recreated through import or catalog edits', () => {
+    command('transfer', { fromBranch: 'A', toBranch: 'B', items: [{ code: 'SP', qty: 1 }] });
+    assert.throws(() =>
+        command('import', {
+            branch: 'A',
+            supplierCode: 'S',
+            items: [{ code: 'SP', qty: 1, price: 50000, hasImei: true, imeis: ['I1'] }],
+            paid: 50000,
+            paymentMethod: 'cash'
+        })
+    );
+    const edit = app.project(db.getAllData(), admin);
+    edit.products[0].stock++;
+    edit.products[0].imeis.push('I1');
+    assert.throws(() => command('edit', edit));
+    assert.equal(db.getAllData().products[0].stock, 2);
+});
+
+test('malformed legacy JSON stays intact and blocks mutations without crashing reads', () => {
+    sell();
+    db.getDb().prepare("UPDATE invoices SET items='bad-json'").run();
+    assert.doesNotThrow(() => db.getAllData());
+    assert.throws(
+        () => sell(),
+        (e) => e.status === 422
+    );
+    assert.equal(db.getDb().prepare('SELECT items FROM invoices').get().items, 'bad-json');
+    db.getDb().prepare("UPDATE invoices SET items='[]'").run();
+    db.getDb().prepare("UPDATE customers SET extra='bad-json'").run();
+    assert.throws(
+        () => sell(),
+        (e) => e.status === 422
+    );
+    assert.equal(db.getDb().prepare('SELECT extra FROM customers').get().extra, 'bad-json');
+});
+
+test('backup captures WAL commits, is restorable, and refuses to overwrite files', () => {
+    sell();
+    const { backupDatabase } = require('../backup');
+    const destination = path.join(dir, 'snapshot.db');
+    backupDatabase(process.env.MINIKIOT_DB_PATH, destination);
+    const restored = new (require('node:sqlite').DatabaseSync)(destination, { readOnly: true });
+    try {
+        assert.equal(restored.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+        assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM invoices').get().n, 1);
+        assert.equal(restored.prepare('SELECT stock FROM products').get().stock, 2);
+    } finally {
+        restored.close();
+    }
+    assert.throws(() => backupDatabase(process.env.MINIKIOT_DB_PATH, destination));
+});
+
+test('discount rounding remains exact across partial returns of a large invoice', () => {
+    const data = db.getAllData();
+    data.products[0].price = 1000000000000001;
+    db.saveAllData(data);
+    const inv = sell({
+        items: [{ code: 'SP', qty: 3 }],
+        discount: 1000000000000000,
+        given: 3000000000000003
+    });
+    for (let i = 0; i < 3; i++)
+        command('return', { invoiceId: inv.id, items: [{ code: 'SP', qty: 1 }] });
+    const refunds = db.getAllData().returns.reduce((s, r) => s + r.totalRefund, 0);
+    assert.equal(refunds, inv.total);
+    assert.equal(db.getAllData().invoices[0].paid, 0);
+});
+
+test('JSON arrays and null are rejected as malformed API bodies', async () => {
+    assert.equal((await request('POST', '/api/login', null)).status, 400);
+    assert.equal((await request('POST', '/api/login', [])).status, 400);
+});
