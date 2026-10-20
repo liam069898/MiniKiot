@@ -211,7 +211,7 @@ function toggleHangHoaMenu(e) {
 
 function getUserAllowedBranches(user = null) {
     if (!user) user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
-    if (!user) return ['Kalo HCM'];
+    if (!user) return [FALLBACK_BRANCH];
     if (user.role === 'admin') {
         return (KVStore.data?.branches || []).map((b) => b.name);
     }
@@ -221,7 +221,7 @@ function getUserAllowedBranches(user = null) {
     if (user.branch) {
         return [user.branch];
     }
-    return ['Kalo HCM'];
+    return [FALLBACK_BRANCH];
 }
 
 function toggleBranchDropdown(e) {
@@ -253,9 +253,9 @@ function getCurrentBranch() {
         if (activeSetting && allowed.includes(activeSetting)) {
             return activeSetting;
         }
-        return allowed[0] || 'Kalo HCM';
+        return allowed[0] || FALLBACK_BRANCH;
     }
-    return activeSetting || 'Kalo HCM';
+    return activeSetting || FALLBACK_BRANCH;
 }
 
 function renderBranchSelector() {
@@ -534,14 +534,14 @@ function renderDashboard() {
     // 1. Calculate Today's KPIs for CURRENT BRANCH ONLY
     const branchInvoices = (data.invoices || []).filter(
         (i) =>
-            (i.branch || 'Kalo HCM') === currentBranch &&
+            (i.branch || FALLBACK_BRANCH) === currentBranch &&
             (i.status !== 'cancelled' || i.bookingVersion === 2)
     );
     const todayInvoices = branchInvoices.filter((i) => matchesDateFilter(i.time, 'today'));
     const todayRevenue = todayInvoices.reduce((acc, cur) => acc + (cur.total || 0), 0);
     const branchReturns = (data.returns || []).filter(
         (r) =>
-            (r.branch || 'Kalo HCM') === currentBranch &&
+            (r.branch || FALLBACK_BRANCH) === currentBranch &&
             !data.invoices.some(
                 (i) =>
                     i.code === r.invoiceCode && i.status === 'cancelled' && i.bookingVersion !== 2
@@ -750,10 +750,10 @@ function renderDashboard() {
         actContainer.innerHTML = '';
         const activities = [];
         const branchInvs = (data.invoices || []).filter(
-            (i) => (i.branch || 'Kalo HCM') === currentBranch
+            (i) => (i.branch || FALLBACK_BRANCH) === currentBranch
         );
         const branchImps = (data.imports || []).filter(
-            (imp) => (imp.branch || 'Kalo HCM') === currentBranch
+            (imp) => (imp.branch || FALLBACK_BRANCH) === currentBranch
         );
 
         branchInvs.slice(0, 5).forEach((inv) => {
@@ -921,7 +921,7 @@ function renderPosScreen() {
         clearCustBtn.classList.toggle('hidden', !curTab.customer);
     }
     if (custBadge && custPointsEl && custDebtEl) {
-        if (curTab.customer && curTab.customer.code !== 'KH0011') {
+        if (curTab.customer && curTab.customer.code !== RETAIL_CUSTOMER_CODE) {
             custBadge.classList.remove('hidden');
             custPointsEl.textContent = `Điểm: ${curTab.customer.points || 0}`;
             custDebtEl.textContent = `Nợ cũ: ${formatVND(curTab.customer.debt || 0)} đ`;
@@ -1005,7 +1005,7 @@ function searchPosProducts(query) {
 
     const currentBranch = getCurrentBranch();
     const branchProducts = (KVStore.data.products || []).filter(
-        (p) => (p.branch || 'Kalo HCM') === currentBranch
+        (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
     );
 
     const list = branchProducts.filter(
@@ -1053,7 +1053,7 @@ function handlePosSearchKeydown(e) {
 
         const currentBranch = getCurrentBranch();
         const branchProducts = (KVStore.data.products || []).filter(
-            (p) => (p.branch || 'Kalo HCM') === currentBranch
+            (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
         );
 
         // 1. Try exact barcode match first
@@ -1370,7 +1370,7 @@ function renderProducts() {
     const currentBranch = getCurrentBranch();
     const q = (document.getElementById('product-search-input')?.value || '').toLowerCase().trim();
     let list = (KVStore.data.products || []).filter(
-        (p) => (p.branch || 'Kalo HCM') === currentBranch
+        (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
     );
 
     if (productFilterCategory !== 'all') {
@@ -1454,7 +1454,7 @@ let currentViewingProductImeis = null;
 function viewProductImeis(code) {
     const currentBranch = getCurrentBranch();
     const prod = (KVStore.data.products || []).find(
-        (p) => p.code === code && (p.branch || 'Kalo HCM') === currentBranch
+        (p) => p.code === code && (p.branch || FALLBACK_BRANCH) === currentBranch
     );
     if (!prod) return;
 
@@ -1551,7 +1551,7 @@ function openAddProductModal(editCode = null, callback = null) {
     if (editCode) {
         titleEl.textContent = 'Chỉnh sửa hàng hóa';
         const p = (KVStore.data.products || []).find(
-            (item) => item.code === editCode && (item.branch || 'Kalo HCM') === currentBranch
+            (item) => item.code === editCode && (item.branch || FALLBACK_BRANCH) === currentBranch
         );
         if (p) {
             document.getElementById('prod-code').value = p.code;
@@ -1571,7 +1571,7 @@ function openAddProductModal(editCode = null, callback = null) {
         titleEl.textContent = 'Thêm hàng hóa mới';
         document.getElementById('prod-code').readOnly = false;
         const branchProducts = (KVStore.data.products || []).filter(
-            (p) => (p.branch || 'Kalo HCM') === currentBranch
+            (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
         );
         document.getElementById('prod-code').value = makeCode('SP');
         document.getElementById('prod-cost').value = '';
@@ -1606,7 +1606,7 @@ async function saveProductFromModal(e) {
     }
 
     const idx = (KVStore.data.products || []).findIndex(
-        (p) => p.code === code && (p.branch || 'Kalo HCM') === currentBranch
+        (p) => p.code === code && (p.branch || FALLBACK_BRANCH) === currentBranch
     );
     let savedProduct;
     if (idx >= 0 && !document.getElementById('product-form').dataset.editCode)
@@ -1668,7 +1668,7 @@ async function deleteProduct(code) {
     const currentBranch = getCurrentBranch();
     if (confirm(`Bạn có chắc chắn muốn xóa sản phẩm ${code}?`)) {
         KVStore.data.products = (KVStore.data.products || []).filter(
-            (p) => !(p.code === code && (p.branch || 'Kalo HCM') === currentBranch)
+            (p) => !(p.code === code && (p.branch || FALLBACK_BRANCH) === currentBranch)
         );
         await KVStore.save();
         renderProducts();
@@ -1773,7 +1773,7 @@ function renderStocktakes() {
 
     const currentBranch = getCurrentBranch();
     const stocktakes = (KVStore.data?.stocktakes || []).filter(
-        (st) => (st.branch || 'Kalo HCM') === currentBranch
+        (st) => (st.branch || FALLBACK_BRANCH) === currentBranch
     );
     const q = (document.getElementById('stocktake-search-input')?.value || '').toLowerCase().trim();
 
@@ -1819,7 +1819,7 @@ function renderStocktakes() {
                 <td class="py-2.5 pl-3 pr-2 text-center"><input type="checkbox" class="kv-checkbox"></td>
                 <td class="py-2.5 px-3 font-mono font-bold text-[#0066cc] cursor-pointer hover:underline" onclick="viewStocktakeDetail('${st.id}')">${st.code}</td>
                 <td class="py-2.5 px-3 text-gray-600">${st.time || ''}</td>
-                <td class="py-2.5 px-3 text-gray-800 font-medium">${st.branch || 'Kalo HCM'}</td>
+                <td class="py-2.5 px-3 text-gray-800 font-medium">${st.branch || FALLBACK_BRANCH}</td>
                 <td class="py-2.5 px-3 text-gray-700">${st.cashier || ''}</td>
                 <td class="py-2.5 px-3 text-right font-bold text-gray-900">${st.totalActual || 0}</td>
                 <td class="py-2.5 px-3 text-right ${varColor}">${varPrefix}${varianceVal}</td>
@@ -1864,7 +1864,7 @@ function openCreateStocktakeModal() {
     const select = document.getElementById('stocktake-add-product-select');
     if (select) {
         const branchProducts = (KVStore.data?.products || []).filter(
-            (p) => (p.branch || 'Kalo HCM') === currentBranch
+            (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
         );
         select.innerHTML =
             trustedHTML('<option value="">+ Chọn hàng hóa thêm vào phiếu kiểm...</option>') +
@@ -1884,7 +1884,7 @@ function openCreateStocktakeModal() {
 function loadAllProductsToStocktake() {
     const currentBranch = getCurrentBranch();
     const products = (KVStore.data?.products || []).filter(
-        (p) => (p.branch || 'Kalo HCM') === currentBranch
+        (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
     );
     activeStocktakeItems = products.map((p) => ({
         code: p.code,
@@ -1911,7 +1911,7 @@ function addStocktakeProductRow(code) {
     }
     const currentBranch = getCurrentBranch();
     const p = (KVStore.data?.products || []).find(
-        (item) => item.code === code && (item.branch || 'Kalo HCM') === currentBranch
+        (item) => item.code === code && (item.branch || FALLBACK_BRANCH) === currentBranch
     );
     if (!p) return;
 
@@ -2056,7 +2056,7 @@ function viewStocktakeDetail(id) {
     }
 
     document.getElementById('st-detail-time').textContent = st.time || '';
-    document.getElementById('st-detail-branch').textContent = st.branch || 'Kalo HCM';
+    document.getElementById('st-detail-branch').textContent = st.branch || FALLBACK_BRANCH;
     document.getElementById('st-detail-cashier').textContent = st.cashier || '';
     document.getElementById('st-detail-note').textContent = st.note || '(Không có ghi chú)';
 
@@ -2223,7 +2223,7 @@ function openCreateTransferModal() {
     const prodSelect = document.getElementById('transfer-add-product-select');
     if (prodSelect) {
         const branchProducts = (KVStore.data?.products || []).filter(
-            (p) => (p.branch || 'Kalo HCM') === currentBranch
+            (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
         );
         prodSelect.innerHTML =
             trustedHTML('<option value="">+ Chọn hàng hóa cần chuyển...</option>') +
@@ -2244,7 +2244,7 @@ function addTransferProductRow(code) {
     if (!code) return;
     const currentBranch = getCurrentBranch();
     const p = (KVStore.data?.products || []).find(
-        (item) => item.code === code && (item.branch || 'Kalo HCM') === currentBranch
+        (item) => item.code === code && (item.branch || FALLBACK_BRANCH) === currentBranch
     );
     if (!p) return;
 
@@ -2487,7 +2487,7 @@ function renderInvoices() {
     const q = (document.getElementById('invoice-search-input')?.value || '').toLowerCase().trim();
     const dateFilter = document.getElementById('invoice-date-filter')?.value || 'all';
     let list = (KVStore.data.invoices || []).filter(
-        (i) => (i.branch || 'Kalo HCM') === currentBranch
+        (i) => (i.branch || FALLBACK_BRANCH) === currentBranch
     );
 
     if (invoiceStatusFilter === 'completed') {
@@ -2578,7 +2578,7 @@ function openInvoiceDetailModal(inv) {
     document.getElementById('inv-detail-time').textContent = inv.time;
     document.getElementById('inv-detail-customer').textContent = `${inv.customer} (${inv.phone})`;
     document.getElementById('inv-detail-cashier').textContent = inv.cashier || 'Trần Văn Nhất';
-    document.getElementById('inv-detail-branch').textContent = inv.branch || 'Kalo HCM';
+    document.getElementById('inv-detail-branch').textContent = inv.branch || FALLBACK_BRANCH;
 
     // Status warning banner if cancelled or returned
     const bannerEl = document.getElementById('inv-detail-status-banner');
@@ -2825,7 +2825,7 @@ function renderImports() {
     const q = (document.getElementById('import-search-input')?.value || '').toLowerCase().trim();
     const dateFilter = document.getElementById('import-date-filter')?.value || 'all';
     let list = (KVStore.data.imports || []).filter(
-        (imp) => (imp.branch || 'Kalo HCM') === currentBranch
+        (imp) => (imp.branch || FALLBACK_BRANCH) === currentBranch
     );
 
     if (dateFilter !== 'all') {
@@ -2904,7 +2904,7 @@ function viewImportDetail(code) {
     document.getElementById('imp-detail-time').textContent = imp.time;
     document.getElementById('imp-detail-ncc').textContent =
         `${imp.nccName || 'Nhà cung cấp'} (${imp.nccCode || ''})`;
-    document.getElementById('imp-detail-branch').textContent = imp.branch || 'Kalo HCM';
+    document.getElementById('imp-detail-branch').textContent = imp.branch || FALLBACK_BRANCH;
     document.getElementById('imp-detail-creator').textContent = imp.creator || 'Quản lý kho';
     document.getElementById('imp-detail-note').textContent = imp.note || 'Không có';
 
@@ -3012,7 +3012,7 @@ function populateImportProducts(selectedCode = null) {
     if (!prodSelect) return;
     const currentBranch = getCurrentBranch();
     const branchProducts = (KVStore.data.products || []).filter(
-        (p) => (p.branch || 'Kalo HCM') === currentBranch
+        (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
     );
     prodSelect.innerHTML = branchProducts
         .map(
@@ -3027,7 +3027,7 @@ function updateImportItemPriceDefault() {
     const prodCode = document.getElementById('import-prod-select')?.value;
     const currentBranch = getCurrentBranch();
     const prod = (KVStore.data.products || []).find(
-        (p) => p.code === prodCode && (p.branch || 'Kalo HCM') === currentBranch
+        (p) => p.code === prodCode && (p.branch || FALLBACK_BRANCH) === currentBranch
     );
     const costInput = document.getElementById('import-unit-cost');
     if (prod && costInput) {
@@ -3133,7 +3133,7 @@ function addImportItem() {
     const prodCode = document.getElementById('import-prod-select')?.value;
     const currentBranch = getCurrentBranch();
     const prod = (KVStore.data.products || []).find(
-        (p) => p.code === prodCode && (p.branch || 'Kalo HCM') === currentBranch
+        (p) => p.code === prodCode && (p.branch || FALLBACK_BRANCH) === currentBranch
     );
     if (!prod) return;
     const qty = parseInt(document.getElementById('import-qty').value, 10) || 1;
@@ -3437,7 +3437,7 @@ function renderCustomers() {
             <td class="py-3 pr-4 text-right space-x-1.5 whitespace-nowrap">
                 ${trustedHTML(c.debt > 0 ? renderHTML`<button onclick="collectCustomerDebt('${c.code}')" class="px-2.5 py-1 bg-amber-50 hover:bg-amber-500 hover:text-white text-amber-700 rounded-lg text-[12px] font-medium transition shadow-2xs">Thu nợ</button>` : '')}
                 <button onclick="editCustomer('${c.code}')" class="px-2.5 py-1 bg-blue-50 hover:bg-[#0066cc] text-[#0066cc] hover:text-white rounded-lg text-[12px] font-medium transition shadow-2xs">Sửa</button>
-                ${trustedHTML(c.code !== 'KH0011' ? renderHTML`<button onclick="deleteCustomer('${c.code}')" class="px-2.5 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[12px] font-medium transition shadow-2xs">Xóa</button>` : '')}
+                ${trustedHTML(c.code !== RETAIL_CUSTOMER_CODE ? renderHTML`<button onclick="deleteCustomer('${c.code}')" class="px-2.5 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[12px] font-medium transition shadow-2xs">Xóa</button>` : '')}
             </td>
         `;
         tbody.appendChild(tr);
@@ -3533,7 +3533,7 @@ function editCustomer(code) {
 }
 
 async function deleteCustomer(code) {
-    if (code === 'KH0011') {
+    if (code === RETAIL_CUSTOMER_CODE) {
         showToast('Không thể xóa khách hàng mặc định (Khách lẻ)!', 'error');
         return;
     }
@@ -3714,7 +3714,7 @@ function renderCashbook() {
 
     // Calculate branch balances by fund type
     const branchCashbook = (KVStore.data.cashbook || []).filter(
-        (tx) => (tx.branch || 'Kalo HCM') === currentBranch
+        (tx) => (tx.branch || FALLBACK_BRANCH) === currentBranch
     );
 
     let cashThu = 0,
@@ -4186,7 +4186,7 @@ function renderReports() {
     const data = KVStore.data;
     const currentBranch = getCurrentBranch();
     const branchProducts = (data.products || []).filter(
-        (p) => (p.branch || 'Kalo HCM') === currentBranch
+        (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
     );
 
     const repBranchEl = document.getElementById('rep-branch-name');
@@ -4210,14 +4210,14 @@ function renderReports() {
 function renderSalesReportTab(data, currentBranch, branchProducts, dateFilter) {
     const branchInvoices = (data.invoices || []).filter(
         (i) =>
-            (i.branch || 'Kalo HCM') === currentBranch &&
+            (i.branch || FALLBACK_BRANCH) === currentBranch &&
             (i.status !== 'cancelled' || i.bookingVersion === 2)
     );
     const validInvoices = branchInvoices.filter((i) => matchesDateFilter(i.time, dateFilter));
 
     const branchReturns = (data.returns || []).filter(
         (r) =>
-            (r.branch || 'Kalo HCM') === currentBranch &&
+            (r.branch || FALLBACK_BRANCH) === currentBranch &&
             !data.invoices.some(
                 (i) =>
                     i.code === r.invoiceCode && i.status === 'cancelled' && i.bookingVersion !== 2
@@ -4479,7 +4479,7 @@ function renderSalesReportTab(data, currentBranch, branchProducts, dateFilter) {
 function renderProductsReportTab(data, currentBranch, branchProducts, dateFilter) {
     const branchInvoices = (data.invoices || []).filter(
         (i) =>
-            (i.branch || 'Kalo HCM') === currentBranch &&
+            (i.branch || FALLBACK_BRANCH) === currentBranch &&
             (i.status !== 'cancelled' || i.bookingVersion === 2)
     );
     const validInvoices = branchInvoices.filter((i) => matchesDateFilter(i.time, dateFilter));
@@ -4721,7 +4721,7 @@ function renderProductsReportTab(data, currentBranch, branchProducts, dateFilter
 
 function renderCashflowReportTab(data, currentBranch, branchProducts, dateFilter) {
     const branchCashbook = (data.cashbook || []).filter(
-        (c) => (c.branch || 'Kalo HCM') === currentBranch
+        (c) => (c.branch || FALLBACK_BRANCH) === currentBranch
     );
     const validCashbook = branchCashbook.filter((c) => matchesDateFilter(c.time, dateFilter));
 
@@ -5376,7 +5376,7 @@ let activeBarcodeProduct = null;
 function openBarcodeModal(productCode) {
     const currentBranch = getCurrentBranch();
     const p = (KVStore.data.products || []).find(
-        (item) => item.code === productCode && (item.branch || 'Kalo HCM') === currentBranch
+        (item) => item.code === productCode && (item.branch || FALLBACK_BRANCH) === currentBranch
     );
     if (!p) {
         showToast('Không tìm thấy sản phẩm', 'error');
@@ -5478,7 +5478,7 @@ function exportTableToCSV(type) {
             'Chi nhánh'
         ];
         rows = (KVStore.data.products || [])
-            .filter((p) => (p.branch || 'Kalo HCM') === currentBranch)
+            .filter((p) => (p.branch || FALLBACK_BRANCH) === currentBranch)
             .map((p) => [
                 p.code,
                 `"${(p.name || '').replace(/"/g, '""')}"`,
@@ -5506,7 +5506,7 @@ function exportTableToCSV(type) {
             'Chi nhánh'
         ];
         rows = (KVStore.data.invoices || [])
-            .filter((i) => (i.branch || 'Kalo HCM') === currentBranch)
+            .filter((i) => (i.branch || FALLBACK_BRANCH) === currentBranch)
             .map((i) => [
                 i.code,
                 `"${i.time || ''}"`,
@@ -5533,7 +5533,7 @@ function exportTableToCSV(type) {
             'Ghi chú'
         ];
         rows = (KVStore.data.imports || [])
-            .filter((imp) => (imp.branch || 'Kalo HCM') === currentBranch)
+            .filter((imp) => (imp.branch || FALLBACK_BRANCH) === currentBranch)
             .map((imp) => [
                 imp.code,
                 `"${imp.time || ''}"`,
@@ -5597,7 +5597,7 @@ function exportTableToCSV(type) {
             'Ghi chú'
         ];
         rows = (KVStore.data.cashbook || [])
-            .filter((tx) => (tx.branch || 'Kalo HCM') === currentBranch)
+            .filter((tx) => (tx.branch || FALLBACK_BRANCH) === currentBranch)
             .map((tx) => [
                 tx.code,
                 `"${tx.time || ''}"`,
@@ -5622,7 +5622,7 @@ function exportTableToCSV(type) {
             'Ghi chú'
         ];
         rows = (KVStore.data.stocktakes || [])
-            .filter((st) => (st.branch || 'Kalo HCM') === currentBranch)
+            .filter((st) => (st.branch || FALLBACK_BRANCH) === currentBranch)
             .map((st) => [
                 st.code,
                 `"${st.time || ''}"`,
@@ -6123,7 +6123,7 @@ function renderStaffTable() {
                                     ? u.branches
                                     : u.branch
                                       ? [u.branch]
-                                      : ['Kalo HCM'];
+                                      : [FALLBACK_BRANCH];
                             let branchDisplay = escapeHTML(userBranches[0]);
                             if (userBranches.length > 1) {
                                 branchDisplay += renderHTML` <span class="text-[10px] text-[#0066cc] bg-blue-50 border border-blue-200/60 font-bold px-1.5 py-0.5 rounded-full" title="${userBranches.join(', ')}">+${userBranches.length - 1}</span>`;
@@ -6224,7 +6224,7 @@ function openStaffFormModal(staffId = null) {
                 ? user.branches
                 : user.branch
                   ? [user.branch]
-                  : ['Kalo HCM'];
+                  : [FALLBACK_BRANCH];
         renderStaffBranchesCheckboxes(selectedBranches);
 
         // Status radio

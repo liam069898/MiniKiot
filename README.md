@@ -72,6 +72,7 @@ Các module chính:
 - `server.js`, `security.js`: HTTP, session, mật khẩu và quyền.
 - `application.js`, `domain.js`: revision, giao dịch, validation, nghiệp vụ.
 - `db.js`, `backup.js`: SQLite, migration và sao lưu.
+- `constants.js`: hằng số dùng chung server/trình duyệt (chi nhánh mặc định cho bản ghi cũ, mã khách lẻ).
 - `client-store.js`, `ui-safety.js`, `app.js`: kết nối, phục hồi yêu cầu, render/in và giao diện.
 - `data.js`: dữ liệu ví dụ cho test và mặc định khởi tạo, không phục vụ ra trình duyệt. URL `/data.js` trả về `client-store.js`.
 

@@ -8,6 +8,7 @@ const { defaultData } = require('./data.js');
 
 const DB_PATH = process.env.MINIKIOT_DB_PATH || path.join(__dirname, 'minikiot.db');
 const { hashPassword } = require('./security.js');
+const { FALLBACK_BRANCH, RETAIL_CUSTOMER_CODE } = require('./constants.js');
 const ENTITY_TABLES = [
     'branches',
     'categories',
@@ -438,7 +439,7 @@ function getAllData() {
                         : [];
                 } catch {}
                 if (!Array.isArray(branches) || branches.length === 0) {
-                    branches = r.branch ? [r.branch] : ['Kalo HCM'];
+                    branches = r.branch ? [r.branch] : [FALLBACK_BRANCH];
                 }
                 let permissions = {};
                 try {
@@ -482,7 +483,7 @@ function getAllData() {
             : inv.returnedTotal || 0;
         if (!inv.customerId && inv.phone && inv.phone !== 'Tại quầy') {
             const matches = result.customers.filter(
-                (c) => c.phone === inv.phone && c.code !== 'KH0011'
+                (c) => c.phone === inv.phone && c.code !== RETAIL_CUSTOMER_CODE
             );
             if (matches.length === 1) inv.customerId = matches[0].id;
         }
@@ -554,7 +555,7 @@ function saveAllData(data, withinTransaction = false) {
                     p.unit || '',
                     p.status || 'active',
                     p.barcode || '',
-                    p.branch || 'Kalo HCM',
+                    p.branch || FALLBACK_BRANCH,
                     p.hasImei ? 1 : 0,
                     JSON.stringify(Array.isArray(p.imeis) ? p.imeis : [])
                 );
@@ -621,7 +622,7 @@ function saveAllData(data, withinTransaction = false) {
                     i.grayBg ? 1 : 0,
                     i.status || 'completed',
                     i.cashier || '',
-                    i.branch || 'Kalo HCM'
+                    i.branch || FALLBACK_BRANCH
                 );
             });
         }
@@ -646,7 +647,7 @@ function saveAllData(data, withinTransaction = false) {
                     m.note || '',
                     m.status || 'imported',
                     m.creator || '',
-                    m.branch || 'Kalo HCM'
+                    m.branch || FALLBACK_BRANCH
                 );
             });
         }
@@ -668,7 +669,7 @@ function saveAllData(data, withinTransaction = false) {
                     c.person || '',
                     c.method || '',
                     c.note || '',
-                    c.branch || 'Kalo HCM'
+                    c.branch || FALLBACK_BRANCH
                 );
             });
         }
@@ -692,7 +693,7 @@ function saveAllData(data, withinTransaction = false) {
                     r.refundMethod || '',
                     r.reason || '',
                     r.cashier || '',
-                    r.branch || 'Kalo HCM'
+                    r.branch || FALLBACK_BRANCH
                 );
             });
         }
@@ -709,7 +710,7 @@ function saveAllData(data, withinTransaction = false) {
                     s.code || '',
                     s.time || '',
                     s.cashier || '',
-                    s.branch || 'Kalo HCM',
+                    s.branch || FALLBACK_BRANCH,
                     s.status || 'balanced',
                     s.note || '',
                     Number(s.totalActual) || 0,
@@ -730,7 +731,7 @@ function saveAllData(data, withinTransaction = false) {
                     t.id || '',
                     t.code || '',
                     t.time || '',
-                    t.fromBranch || 'Kalo HCM',
+                    t.fromBranch || FALLBACK_BRANCH,
                     t.toBranch || 'Chi nhánh Hà Nội',
                     t.cashier || '',
                     t.status || 'shipping',
@@ -757,7 +758,7 @@ function saveAllData(data, withinTransaction = false) {
                         ? u.branches
                         : u.branch
                           ? [u.branch]
-                          : ['Kalo HCM'];
+                          : [FALLBACK_BRANCH];
                 stmt.run(
                     u.id || `NV${Date.now()}`,
                     u.code || '',
@@ -767,7 +768,7 @@ function saveAllData(data, withinTransaction = false) {
                     u.phone || '',
                     u.role || 'cashier',
                     u.roleName || '',
-                    u.branch || branchesArr[0] || 'Kalo HCM',
+                    u.branch || branchesArr[0] || FALLBACK_BRANCH,
                     JSON.stringify(branchesArr),
                     u.status || 'active',
                     typeof u.permissions === 'object'

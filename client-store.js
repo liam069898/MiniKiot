@@ -2,7 +2,7 @@
 const defaultData = {
     settings: {
         storeName: 'MiniKiot',
-        branch: 'Kalo HCM',
+        branch: FALLBACK_BRANCH,
         phone: '',
         hotline: '',
         address: '',

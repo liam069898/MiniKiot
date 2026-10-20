@@ -1,6 +1,7 @@
 'use strict';
 const { randomUUID } = require('node:crypto');
 const { requirePermission, allowedBranches } = require('./security');
+const { FALLBACK_BRANCH, RETAIL_CUSTOMER_CODE } = require('./constants');
 const fail = (message, status = 422) => {
     throw Object.assign(new Error(message), { status });
 };
@@ -19,7 +20,7 @@ const now = () => {
     const pad = (n) => String(n).padStart(2, '0');
     return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
-const branchOf = (record) => record.branch || 'Kalo HCM';
+const branchOf = (record) => record.branch || FALLBACK_BRANCH;
 function branch(data, user, name) {
     if (!allowedBranches(user, data).includes(name) || !data.branches.some((b) => b.name === name))
         fail('Chi nhánh không hợp lệ hoặc chưa được cấp quyền.', 403);
@@ -33,7 +34,9 @@ function product(data, code, br) {
 function customerFor(data, inv) {
     if (inv.customerId) return data.customers.find((c) => c.id === inv.customerId);
     if (!inv.phone || inv.phone === 'Tại quầy') return null;
-    const matches = data.customers.filter((c) => c.phone === inv.phone && c.code !== 'KH0011');
+    const matches = data.customers.filter(
+        (c) => c.phone === inv.phone && c.code !== RETAIL_CUSTOMER_CODE
+    );
     if (matches.length !== 1 && inv.total > inv.paid)
         fail('Cần xác định khách hàng duy nhất cho hóa đơn cũ trước khi xử lý công nợ.');
     return matches.length === 1 ? matches[0] : null;
@@ -183,7 +186,7 @@ function sale(data, user, input) {
     });
     const cust = input.customerId ? data.customers.find((c) => c.id === input.customerId) : null;
     if (input.customerId && !cust) fail('Khách hàng không tồn tại.');
-    const retail = !cust || cust.code === 'KH0011';
+    const retail = !cust || cust.code === RETAIL_CUSTOMER_CODE;
     const given = amount(input.given),
         paid = Math.min(given, total);
     if (retail && paid < total) fail('Khách lẻ chưa trả đủ tiền. Hãy chọn khách hàng để ghi nợ.');

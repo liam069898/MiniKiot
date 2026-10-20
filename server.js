@@ -232,6 +232,7 @@ async function handler(req, res) {
             '/index.html': 'index.html',
             '/giao_di_n_qu_n_l_b_n_h_ng_kiotviet.html': 'index.html',
             '/app.js': 'app.js',
+            '/constants.js': 'constants.js',
             '/data.js': 'client-store.js',
             '/ui-safety.js': 'ui-safety.js'
         };

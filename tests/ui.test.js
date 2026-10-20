@@ -14,6 +14,7 @@ function browser() {
     w.prompt = () => null;
     w.print = () => {};
     w.fetch = async () => ({ ok: false, status: 401, json: async () => ({ error: 'login' }) });
+    w.eval(fs.readFileSync('constants.js', 'utf8'));
     w.eval(fs.readFileSync('ui-safety.js', 'utf8'));
     w.eval(fs.readFileSync('client-store.js', 'utf8'));
     w.eval(
