@@ -2642,12 +2642,22 @@ async function saveProductFromModal(e) {
         return;
     }
 
+    const isEdit = Boolean(document.getElementById('product-form')?.dataset?.editCode);
+    const codeExistsInAnyBranch = (KVStore.data.products || []).some((p) => p.code === code);
+    if (!isEdit && codeExistsInAnyBranch) {
+        showToast(`Mã sản phẩm "${code}" đã tồn tại trong hệ thống!`, 'warning');
+        throw new Error('Mã sản phẩm đã tồn tại.');
+    }
+
     const idx = (KVStore.data.products || []).findIndex(
         (p) => p.code === code && (p.branch || FALLBACK_BRANCH) === currentBranch
     );
     let savedProduct;
-    if (idx >= 0 && !document.getElementById('product-form').dataset.editCode)
+    if (idx >= 0 && !isEdit) {
+        showToast(`Mã sản phẩm "${code}" đã tồn tại!`, 'warning');
         throw new Error('Mã sản phẩm đã tồn tại.');
+    }
+
     if (idx >= 0) {
         const currentImeis = KVStore.data.products[idx].imeis || [];
         KVStore.data.products[idx] = {
@@ -2685,6 +2695,7 @@ async function saveProductFromModal(e) {
             imeis: []
         };
         KVStore.data.products.push(savedProduct);
+
         showToast(`Đã thêm mới hàng hóa ${code}!`, 'success');
     }
 

@@ -228,7 +228,8 @@ test('catalog add, settings save and staff create roundtrip through actual HTTP 
         setValue(b.w, 'prod-name', 'Name <img src=x onerror=alert(1)>');
         setValue(b.w, 'prod-price', '200000');
         await b.w.saveProductFromModal({ preventDefault() {} });
-        assert.equal(db.getAllData().products.length, 2);
+        assert.equal(db.getAllData().products.filter((p) => p.code === 'NEW').length, 2);
+        assert.equal(db.getAllData().products.length, 3);
         assert.equal(b.w.document.querySelector('#products-tbody img'), null);
         b.w.openSettingsModal();
         setValue(b.w, 'set-bank-account', '00123456789');
@@ -313,6 +314,41 @@ test('sensitive staff command never puts credentials in pending browser storage'
         await b.w.forceSyncDatabase();
         assert.equal(b.w.eval('KVStore.pending().length'), 0);
         assert.equal(db.getAllData().users.length, 2);
+    } finally {
+        b.close();
+    }
+});
+test('product codes synchronize across all branches when created or when new branch is added', async () => {
+    const b = browser();
+    try {
+        await login(b);
+        b.w.openAddProductModal();
+        setValue(b.w, 'prod-code', 'SP_SYNC_TEST');
+        setValue(b.w, 'prod-name', 'Sản phẩm Test Đồng Bộ');
+        setValue(b.w, 'prod-price', '150000');
+        await b.w.saveProductFromModal({ preventDefault() {} });
+
+        const prodsAfterAdd = db.getAllData().products.filter((p) => p.code === 'SP_SYNC_TEST');
+        assert.equal(prodsAfterAdd.length, 2);
+        const hcmProd = prodsAfterAdd.find((p) => (p.branch || 'Kalo HCM') === 'Kalo HCM');
+        const hnProd = prodsAfterAdd.find((p) => p.branch === 'Chi nhánh Hà Nội');
+        assert.ok(hcmProd);
+        assert.ok(hnProd);
+        assert.equal(hnProd.stock, 0);
+        assert.deepEqual(hnProd.imeis, []);
+        assert.equal(hnProd.name, 'Sản phẩm Test Đồng Bộ');
+
+        b.w.openAddBranchModal();
+        setValue(b.w, 'branch-code-input', 'CN_DN');
+        setValue(b.w, 'branch-name-input', 'Chi nhánh Đà Nẵng');
+        await b.w.saveBranchFromModal({ preventDefault() {} });
+
+        const prodsAfterBranch = db.getAllData().products.filter((p) => p.code === 'SP_SYNC_TEST');
+        assert.equal(prodsAfterBranch.length, 3);
+        const dnProd = prodsAfterBranch.find((p) => p.branch === 'Chi nhánh Đà Nẵng');
+        assert.ok(dnProd);
+        assert.equal(dnProd.stock, 0);
+        assert.deepEqual(dnProd.imeis, []);
     } finally {
         b.close();
     }

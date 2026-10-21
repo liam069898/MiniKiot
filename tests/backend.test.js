@@ -393,6 +393,101 @@ test('catalog edits preserve passwords and reject duplicate codes', () => {
     dup.products.push({ ...dup.products[0], id: 'OTHER' });
     assert.throws(() => command('edit', dup));
 });
+test('product sync respects branch scope and uses the edited branch row as source', () => {
+    const data = db.getAllData();
+    data.products.push({
+        ...data.products[0],
+        id: 'SP-B',
+        branch: 'B',
+        name: 'B original',
+        stock: 0,
+        imeis: []
+    });
+    const worker = {
+        ...admin,
+        id: 'WORKER',
+        code: 'WORKER',
+        username: 'worker',
+        role: 'warehouse',
+        branch: 'A',
+        branches: ['A'],
+        permissions: { products: true }
+    };
+    data.users.push(worker);
+    db.saveAllData(data);
+
+    const priceOnly = app.project(db.getAllData(), worker);
+    priceOnly.products[0].price = 120000;
+    command('edit', priceOnly, app.revision(), crypto.randomUUID(), worker);
+    assert.equal(db.getAllData().products.find((p) => p.id === 'SP-B').price, 100000);
+
+    const shared = app.project(db.getAllData(), worker);
+    shared.products[0].name = 'A changed';
+    assert.throws(
+        () => command('edit', shared, app.revision(), crypto.randomUUID(), worker),
+        (error) => error.status === 403
+    );
+    assert.equal(db.getAllData().products.find((p) => p.id === 'SP').name, 'Product');
+
+    const fromB = app.project(db.getAllData(), admin);
+    fromB.products.reverse().find((p) => p.branch === 'B').name = 'From B';
+    command('edit', fromB);
+    assert.deepEqual(
+        db
+            .getAllData()
+            .products.map((p) => p.name)
+            .sort(),
+        ['From B', 'From B']
+    );
+});
+test('customer edits do not trigger product sync or product permission checks', () => {
+    const data = db.getAllData();
+    const cashier = {
+        ...admin,
+        id: 'CASHIER',
+        code: 'CASHIER',
+        username: 'cashier',
+        role: 'cashier',
+        branch: 'A',
+        branches: ['A'],
+        permissions: { customers: true }
+    };
+    data.users.push(cashier);
+    db.saveAllData(data);
+    const input = app.project(db.getAllData(), cashier);
+    input.customers[0].name = 'Changed customer';
+    command('edit', input, app.revision(), crypto.randomUUID(), cashier);
+    assert.equal(db.getAllData().customers[0].name, 'Changed customer');
+    assert.equal(db.getAllData().products.length, 1);
+});
+test('product IMEI mode cannot propagate to another branch with stock', () => {
+    const data = db.getAllData();
+    Object.assign(data.products[0], { stock: 0, imeis: [] });
+    data.products.push({
+        ...data.products[0],
+        id: 'SP-B',
+        branch: 'B',
+        stock: 1,
+        imeis: ['B1']
+    });
+    db.saveAllData(data);
+    const input = app.project(db.getAllData(), admin);
+    input.products.find((p) => p.branch === 'A').hasImei = false;
+    assert.throws(() => command('edit', input), /IMEI/);
+    assert.equal(db.getAllData().products.find((p) => p.branch === 'B').hasImei, true);
+});
+test('generated cross-branch product IDs cannot exceed 160 characters', () => {
+    const input = app.project(db.getAllData(), admin);
+    input.products.push({
+        ...input.products[0],
+        id: 'LONG',
+        code: 'X'.repeat(159),
+        stock: 0,
+        imeis: []
+    });
+    assert.throws(() => command('edit', input), /quá dài/);
+    assert.equal(db.getAllData().products.length, 1);
+});
 test('HTTP routes deny unauthenticated reads/writes and database downloads', async () => {
     for (const url of ['/api/data', '/api/status'])
         assert.equal((await request('GET', url)).status, 401);
@@ -569,6 +664,25 @@ test('backup captures WAL commits, is restorable, and refuses to overwrite files
         restored.close();
     }
     assert.throws(() => backupDatabase(process.env.MINIKIOT_DB_PATH, destination));
+});
+
+test('backup CLI uses the same NKIOT_DB_PATH precedence as the server', () => {
+    const destination = path.join(dir, 'cli-snapshot.db');
+    const result = require('node:child_process').spawnSync(
+        process.execPath,
+        ['backup.js', destination],
+        {
+            cwd: path.join(__dirname, '..'),
+            env: {
+                ...process.env,
+                NKIOT_DB_PATH: process.env.MINIKIOT_DB_PATH,
+                MINIKIOT_DB_PATH: path.join(dir, 'missing.db')
+            },
+            encoding: 'utf8'
+        }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(require('../backup').validateBackup(destination), true);
 });
 
 test('backup rotation validates every retained snapshot', () => {

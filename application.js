@@ -250,12 +250,17 @@ function validateRecord(table, row, data, old, user) {
             old &&
             row.hasImei !== old.hasImei &&
             (old.stock ||
-                ['invoices', 'imports', 'returns'].some((t) =>
+                ['invoices', 'imports', 'returns', 'stocktakes'].some((t) =>
                     data[t].some(
                         (d) =>
                             branchOf(d) === branchOf(old) &&
                             d.items.some((i) => i.code === old.code)
                     )
+                ) ||
+                data.transfers.some(
+                    (t) =>
+                        (t.fromBranch === branchOf(old) || t.toBranch === branchOf(old)) &&
+                        t.items.some((i) => i.code === old.code)
                 ))
         )
             fail('Không thể đổi cách quản lý IMEI khi còn tồn kho hoặc lịch sử chứng từ.');
@@ -309,10 +314,69 @@ function validateRecord(table, row, data, old, user) {
         else fail('Nhập mật khẩu cho nhân viên mới.');
     }
 }
+const SHARED_PRODUCT_FIELDS = ['name', 'category', 'unit', 'barcode', 'hasImei'];
+function syncProductCodesAcrossBranches(data, user, originalProducts, oldBranchIds) {
+    const sources = new Map();
+    for (const row of data.products) {
+        const old = originalProducts.get(row.id);
+        if (old && SHARED_PRODUCT_FIELDS.every((key) => equal(row[key], old[key]))) continue;
+        const current = sources.get(row.code);
+        if (current && SHARED_PRODUCT_FIELDS.some((key) => !equal(row[key], current[key])))
+            fail('Thông tin chung của sản phẩm bị sửa khác nhau giữa các chi nhánh.');
+        sources.set(row.code, row);
+    }
+    const addedBranches = data.branches.filter((row) => !oldBranchIds.has(row.id));
+    if (!sources.size && !addedBranches.length) return;
+    const branches = data.branches.map((row) => row.name);
+    const scope = allowedBranches(user, data);
+    if (addedBranches.length) requirePermission(user, 'products');
+    if (branches.some((branch) => !scope.includes(branch)))
+        fail('Cần quyền tất cả chi nhánh để đồng bộ thông tin sản phẩm.', 403);
+    const ids = new Set(data.products.map((row) => row.id));
+    const nextId = (code, branch) => {
+        const base = `${code}_${branch.code || branch.id}`;
+        let id = base;
+        for (let n = 2; ids.has(id); n++) id = `${base}_${n}`;
+        if (id.length > 160) fail('Mã sản phẩm quá dài để đồng bộ sang chi nhánh khác.');
+        ids.add(id);
+        return id;
+    };
+    const codes = [...sources.keys()];
+    if (addedBranches.length)
+        for (const row of data.products) if (!codes.includes(row.code)) codes.push(row.code);
+    for (const code of codes) {
+        const rows = data.products.filter((row) => row.code === code);
+        const source = sources.get(code) || rows.find((row) => row.status === 'active') || rows[0];
+        if (sources.has(code))
+            for (const [index, row] of data.products.entries()) {
+                if (row.code !== code || row === source) continue;
+                const updated = { ...row };
+                for (const key of SHARED_PRODUCT_FIELDS) updated[key] = source[key];
+                if (equal(updated, row)) continue;
+                validateRecord('products', updated, data, originalProducts.get(row.id), user);
+                data.products[index] = updated;
+            }
+        const targets = sources.has(code) ? data.branches : addedBranches;
+        for (const branch of targets) {
+            if (rows.some((row) => branchOf(row) === branch.name)) continue;
+            const row = {
+                ...source,
+                id: nextId(code, branch),
+                branch: branch.name,
+                stock: 0,
+                imeis: []
+            };
+            validateRecord('products', row, data, undefined, user);
+            data.products.push(row);
+        }
+    }
+}
 function applyEdit(data, user, incoming) {
     if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming))
         fail('Dữ liệu không hợp lệ.');
     const visible = project(data, user);
+    const originalProducts = new Map(data.products.map((row) => [row.id, { ...row }]));
+    const oldBranchIds = new Set(data.branches.map((row) => row.id));
     for (const table of db.ENTITY_TABLES) {
         if (!Array.isArray(incoming[table])) fail(`Thiếu danh sách ${table}.`);
         if (equal(visible[table], incoming[table])) continue;
@@ -403,6 +467,7 @@ function applyEdit(data, user, incoming) {
             keys.add(key);
         }
     }
+    syncProductCodesAcrossBranches(data, user, originalProducts, oldBranchIds);
     if (!equal(visible.settings, incoming.settings)) {
         requirePermission(user, 'settings');
         if (
