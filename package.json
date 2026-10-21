@@ -1,7 +1,7 @@
 {
     "name": "minikiot-webapp",
     "version": "1.0.0",
-    "description": "MiniKiot - POS với Node.js, SQLite và giao diện JavaScript",
+    "description": "NKiot - POS với Node.js, SQLite và giao diện JavaScript",
     "main": "server.js",
     "scripts": {
         "start": "node server.js",

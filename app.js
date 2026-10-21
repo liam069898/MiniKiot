@@ -2193,7 +2193,7 @@ function renderVietQR(amount, imgId, descId) {
     const descEl = document.getElementById(descId);
     const bankCode = s.bankCode || 'VCB';
     const bankAccount = s.bankAccount || '0000000000';
-    const bankOwner = s.bankOwner || 'MINIKIOT';
+    const bankOwner = s.bankOwner || 'NKIOT';
     const bankName = s.bankName || 'Ngân hàng';
     const addInfo = `NKiot_${Date.now().toString().slice(-6)}`;
     const qrUrl = `https://api.vietqr.io/image/${bankCode}-${bankAccount}-compact.jpg?amount=${amount}&addInfo=${encodeURIComponent(addInfo)}&accountName=${encodeURIComponent(bankOwner)}`;

@@ -1,6 +1,6 @@
 # Triển khai HTTPS và reverse proxy
 
-MiniKiot chỉ phục vụ HTTP. Khi dùng ngoài một LAN tin cậy, đặt máy chủ sau reverse proxy kết thúc TLS và chỉ cho proxy truy cập cổng Node.
+NKiot chỉ phục vụ HTTP. Khi dùng ngoài một LAN tin cậy, đặt máy chủ sau reverse proxy kết thúc TLS và chỉ cho proxy truy cập cổng Node.
 
 ## Chạy ứng dụng
 

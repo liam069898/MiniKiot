@@ -195,7 +195,9 @@ async function handler(req, res) {
             if (!user) return json(res, 401, { success: false, error: 'Vui lòng đăng nhập.' });
             const csrfToken = sessions.get(cookie(req)).csrfToken;
             if (!['GET', 'HEAD'].includes(req.method)) {
-                const sent = Buffer.from(String(req.headers['x-minikiot-csrf'] || '')),
+                const sent = Buffer.from(
+                        String(req.headers['x-nkiot-csrf'] || req.headers['x-minikiot-csrf'] || '')
+                    ),
                     expected = Buffer.from(csrfToken);
                 if (sent.length !== expected.length || !crypto.timingSafeEqual(sent, expected))
                     return json(res, 403, {
@@ -285,7 +287,7 @@ async function handler(req, res) {
                     });
                 // Client holding the view at revision `base` can take only the changed rows.
                 // `prior` is that view, rebuilt from the snapshot (same tick, before the write).
-                const base = Number(req.headers['x-minikiot-base']);
+                const base = Number(req.headers['x-nkiot-base'] ?? req.headers['x-minikiot-base']);
                 const priorRevision = application.revision();
                 const prior =
                     base === priorRevision && envelope?.revision === base
@@ -360,7 +362,7 @@ function createServer() {
 if (require.main === module) {
     const server = createServer();
     server.listen(process.env.PORT || 3000, process.env.HOST || '0.0.0.0', () =>
-        console.log(`MiniKiot: http://localhost:${process.env.PORT || 3000}`)
+        console.log(`NKiot: http://localhost:${process.env.PORT || 3000}`)
     );
 }
 module.exports = { handler };

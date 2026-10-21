@@ -1,7 +1,7 @@
 'use strict';
 const defaultData = {
     settings: {
-        storeName: 'MiniKiot',
+        storeName: 'NKiot',
         branch: FALLBACK_BRANCH,
         phone: '',
         hotline: '',
@@ -90,7 +90,7 @@ const KVStore = {
                 signal: controller.signal,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...(this.csrfToken ? { 'X-MiniKiot-CSRF': this.csrfToken } : {}),
+                    ...(this.csrfToken ? { 'X-NKiot-CSRF': this.csrfToken } : {}),
                     ...(options.headers || {})
                 }
             });
@@ -236,7 +236,7 @@ const KVStore = {
             const result = pending.envelope
                 ? await this.request('/api/command', {
                       method: 'POST',
-                      headers: { 'X-MiniKiot-Base': String(this.revision) },
+                      headers: { 'X-NKiot-Base': String(this.revision) },
                       body: JSON.stringify(pending.envelope)
                   })
                 : await this.request('/api/requests/' + encodeURIComponent(pending.requestId));
@@ -325,7 +325,7 @@ const KVStore = {
         URL.revokeObjectURL(url);
     },
     exportJSON() {
-        this.download(this.data, `minikiot-export-${new Date().toISOString().slice(0, 10)}.json`);
+        this.download(this.data, `nkiot-export-${new Date().toISOString().slice(0, 10)}.json`);
     }
 };
 window.addEventListener('online', () => {

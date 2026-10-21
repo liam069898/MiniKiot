@@ -1,4 +1,4 @@
-**Review MiniKiot — 20/10/2026**
+**Review NKiot — 20/10/2026**
 
 > Báo cáo này mô tả phiên bản trước khi sửa; số dòng và nhận xét dưới đây được giữ làm lịch sử. Xem [FIXES.md](FIXES.md) để biết thay đổi đã thực hiện, kiểm chứng và giới hạn còn lại.
 

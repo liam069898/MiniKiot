@@ -1,4 +1,4 @@
-# MiniKiot
+# NKiot
 
 Ứng dụng bán hàng dùng giao diện JavaScript thuần, máy chủ Node.js và SQLite. Máy chủ kiểm tra đăng nhập, quyền, chi nhánh và thực hiện giao dịch; trình duyệt nhập liệu và hiển thị kết quả.
 
@@ -90,7 +90,7 @@ Xem [trạng thái sửa lỗi](FIXES.md), [báo cáo review ban đầu](CODE_RE
 
 ## Bảo mật phiên và dữ liệu vận hành
 
-- API ghi (`POST`) sau đăng nhập yêu cầu header `X-MiniKiot-CSRF`, gắn với từng session. `client-store.js` tự gửi token; client/script tự viết cần lấy token từ `/api/login` hoặc `/api/data`.
+- API ghi (`POST`) sau đăng nhập yêu cầu header `X-NKiot-CSRF` (hoặc `X-MiniKiot-CSRF`), gắn với từng session. `client-store.js` tự gửi token; client/script tự viết cần lấy token từ `/api/login` hoặc `/api/data`.
 - Kết quả chống ghi trùng trong `processed_requests` giữ 30 ngày. Sau đó request cũ trùng `requestId` vẫn bị chặn nhờ `audit_log`; cần đối soát chứng từ thay vì gửi lại.
 - `audit_log` chưa tự xóa vì chưa có chính sách lưu trữ nghiệp vụ/pháp lý.
 - Chứng từ mới giữ `time` theo giờ máy chủ để hiển thị và thêm `createdAt` ISO UTC để sắp xếp, đối soát. Dữ liệu cũ không bị suy đoán giờ UTC.
