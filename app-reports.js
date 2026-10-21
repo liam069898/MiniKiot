@@ -229,9 +229,44 @@ function renderReports() {
     const isAll =
         currentBranch ===
         (typeof ALL_BRANCHES !== 'undefined' ? ALL_BRANCHES : 'Toàn bộ chi nhánh');
-    const branchProducts = (data.products || []).filter(
-        (p) => isAll || (p.branch || FALLBACK_BRANCH) === currentBranch
-    );
+    let branchProducts;
+    if (isAll) {
+        const prodMap = new Map();
+        (data.products || []).forEach((p) => {
+            const code = p.code;
+            if (!prodMap.has(code)) {
+                prodMap.set(code, {
+                    ...p,
+                    stock: 0,
+                    minStock: 0,
+                    imeis: [],
+                    branchStocks: []
+                });
+            }
+            const item = prodMap.get(code);
+            const bName = p.branch || FALLBACK_BRANCH;
+            const bStock = Number(p.stock) || 0;
+            item.stock += bStock;
+            item.minStock = Math.max(item.minStock, Number(p.minStock) || 0);
+            if (Array.isArray(p.imeis)) {
+                item.imeis.push(...p.imeis);
+            }
+            item.branchStocks.push({ branch: bName, stock: bStock });
+            if (p.status === 'active') item.status = 'active';
+            if (!item.price && p.price) item.price = p.price;
+            if (!item.costPrice && p.costPrice) item.costPrice = p.costPrice;
+        });
+        branchProducts = Array.from(prodMap.values()).map((item) => {
+            item.branchBreakdown = item.branchStocks
+                .map((b) => `${b.branch}: ${b.stock}`)
+                .join(' · ');
+            return item;
+        });
+    } else {
+        branchProducts = (data.products || []).filter(
+            (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
+        );
+    }
 
     const repBranchEl = document.getElementById('rep-branch-name');
     if (repBranchEl) repBranchEl.textContent = isAll ? 'Toàn bộ chi nhánh' : currentBranch;
@@ -1126,7 +1161,7 @@ function renderInventoryReportTab(data, currentBranch, branchProducts, dateFilte
                     <td class="py-2.5 px-3 font-semibold text-[#0066cc] font-mono text-[12px]">${p.code}</td>
                     <td class="py-2.5 px-3 font-semibold text-gray-900 max-w-[260px] truncate" title="${p.name}">${p.name}</td>
                     <td class="py-2.5 px-3 text-gray-600 text-[12px]">${p.category}</td>
-                    <td class="py-2.5 px-3 text-center font-bold ${p.stock <= 0 ? 'text-rose-600' : p.stock <= p.minStock ? 'text-amber-600' : 'text-gray-800'}">${p.stock || 0}</td>
+                    <td class="py-2.5 px-3 text-center font-bold ${p.stock <= 0 ? 'text-rose-600' : p.stock <= p.minStock ? 'text-amber-600' : 'text-gray-800'}" title="${p.branchBreakdown || ''}">${p.stock || 0}</td>
                     <td class="py-2.5 px-3 text-center text-gray-500 font-medium">${p.minStock || 0}</td>
                     <td class="py-2.5 px-3 text-right font-medium text-gray-600 tabular-nums">${formatVND(p.costPrice)} đ</td>
                     <td class="py-2.5 px-3 text-right font-medium text-gray-800 tabular-nums">${formatVND(p.price)} đ</td>

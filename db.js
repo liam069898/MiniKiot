@@ -9,7 +9,9 @@ const { defaultData } = require('./data.js');
 const DB_PATH =
     process.env.NKIOT_DB_PATH ||
     process.env.MINIKIOT_DB_PATH ||
-    path.join(__dirname, 'minikiot.db');
+    (fs.existsSync(path.join(__dirname, 'nkiot.db'))
+        ? path.join(__dirname, 'nkiot.db')
+        : path.join(__dirname, 'minikiot.db'));
 const { hashPassword } = require('./security.js');
 const { FALLBACK_BRANCH, RETAIL_CUSTOMER_CODE } = require('./constants.js');
 const ENTITY_TABLES = [

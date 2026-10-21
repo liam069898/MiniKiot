@@ -63,7 +63,9 @@ function voucher(
         customerId,
         supplierId,
         note,
-        allocations
+        allocations,
+        importId,
+        importCode
     }
 ) {
     if (!value) return;
@@ -82,6 +84,8 @@ function voucher(
         invoiceId,
         customerId,
         supplierId,
+        importId,
+        importCode,
         note: note || '',
         allocations: allocations || []
     });
@@ -389,7 +393,9 @@ function importGoods(data, user, input) {
         const p = product(data, row.code, br),
             qty = quantity(row.qty),
             price = amount(row.price),
-            imeis = row.imeis || [];
+            imeis = row.imeis || [],
+            stockBefore = amount(p.stock, 'Tồn kho'),
+            costPriceBefore = amount(p.costPrice, 'Giá vốn');
         if (!p.hasImei && row.hasImei && p.stock > 0)
             fail('Cần đối soát hàng đang tồn trước khi bật quản lý IMEI.');
         if (p.hasImei || row.hasImei) {
@@ -413,7 +419,11 @@ function importGoods(data, user, input) {
             price,
             total: amount(qty * price),
             hasImei: p.hasImei,
-            imeis
+            imeis,
+            stockBefore,
+            stockAfter: p.stock,
+            costPriceBefore,
+            costPriceAfter: p.costPrice
         };
     });
     const total = amount(items.reduce((s, i) => s + i.total, 0)),
@@ -457,6 +467,118 @@ function importGoods(data, user, input) {
         note: `Nhập hàng ${id}`
     });
     return record;
+}
+function cancelImport(data, user, input) {
+    requirePermission(user, 'imports');
+    const imp = data.imports.find((i) => i.id === input.importId || i.code === input.importId);
+    if (!imp) fail('Không tìm thấy phiếu nhập.');
+    if (imp.status === 'cancelled') fail('Phiếu nhập đã hủy.', 409);
+    if ((data.cashbook || []).some((c) => c.importId === imp.id))
+        fail('Phiếu nhập đã có chứng từ hoàn tiền; cần đối soát thủ công.', 409);
+    const br = branchOf(imp);
+    branch(data, user, br);
+    const importedCodes = new Set((imp.items || []).map((row) => row.code));
+    const touchesImport = (doc) =>
+        doc !== imp &&
+        typeof doc.createdAt === 'string' &&
+        doc.createdAt >= imp.createdAt &&
+        (doc.items || []).some((row) => importedCodes.has(row.code));
+    if (
+        ['invoices', 'imports', 'returns', 'stocktakes'].some((table) =>
+            (data[table] || []).some((doc) => branchOf(doc) === br && touchesImport(doc))
+        ) ||
+        (data.transfers || []).some(
+            (doc) => (doc.fromBranch === br || doc.toBranch === br) && touchesImport(doc)
+        )
+    )
+        fail('Đã có chứng từ phát sinh sau phiếu nhập; cần đối soát thủ công.', 409);
+
+    // Verify stock and IMEIs before deducting
+    (imp.items || []).forEach((row) => {
+        const p = product(data, row.code, br);
+        if (
+            !Number.isSafeInteger(row.stockBefore) ||
+            !Number.isSafeInteger(row.stockAfter) ||
+            !Number.isSafeInteger(row.costPriceBefore) ||
+            !Number.isSafeInteger(row.costPriceAfter)
+        )
+            fail('Phiếu nhập cũ thiếu dữ liệu giá vốn; cần đối soát thủ công.', 409);
+        if (p.stock !== row.stockAfter || p.costPrice !== row.costPriceAfter)
+            fail('Tồn kho hoặc giá vốn đã thay đổi sau khi nhập; cần đối soát thủ công.', 409);
+        if (p.stock < row.qty) {
+            fail(
+                `Tồn kho "${p.name}" (${p.code}) không đủ để hủy phiếu nhập (hiện còn ${p.stock}, cần trừ ${row.qty}).`,
+                409
+            );
+        }
+        if (row.hasImei && Array.isArray(row.imeis) && row.imeis.length) {
+            const currentImeis = new Set(p.imeis || []);
+            const missing = row.imeis.filter((im) => !currentImeis.has(im));
+            if (missing.length > 0) {
+                fail(
+                    `Một số IMEI của phiếu nhập đã xuất hoặc bán: ${missing.slice(0, 3).join(', ')}...`,
+                    409
+                );
+            }
+        }
+    });
+
+    // 2. Deduct stock and remove IMEIs
+    (imp.items || []).forEach((row) => {
+        const p = product(data, row.code, br);
+        p.stock = amount(row.stockBefore, 'Tồn kho');
+        p.costPrice = amount(row.costPriceBefore, 'Giá vốn');
+        if (row.hasImei && Array.isArray(row.imeis) && row.imeis.length) {
+            const toRemove = new Set(row.imeis);
+            p.imeis = (p.imeis || []).filter((im) => !toRemove.has(im));
+        }
+    });
+
+    // 3. Reconcile supplier debt and totalBought
+    const supplier = data.suppliers.find((s) => s.id === imp.supplierId || s.code === imp.nccCode);
+    const total = amount(imp.needPay || 0);
+    const paid = amount(imp.paid || 0);
+    const unpaid = amount(total - paid);
+    if (supplier) {
+        if (supplier.debt < unpaid || supplier.totalBought < total)
+            fail('Công nợ hoặc tổng nhập nhà cung cấp đã thay đổi; cần đối soát thủ công.', 409);
+        supplier.debt = amount(supplier.debt - unpaid);
+        supplier.totalBought = amount(supplier.totalBought - total);
+    }
+
+    // 4. Reverse cashbook payment if paid > 0 (creates a receipt voucher 'thu')
+    if (paid > 0) {
+        const rawMethod = input.refundMethod || imp.paymentMethod;
+        const normalizedMethod =
+            rawMethod === 'Tiền mặt'
+                ? 'cash'
+                : rawMethod === 'Chuyển khoản' || rawMethod === 'bank'
+                  ? 'transfer'
+                  : rawMethod === 'Thẻ'
+                    ? 'card'
+                    : rawMethod;
+        const method = paymentMethod(normalizedMethod);
+        voucher(data, {
+            type: 'thu',
+            category: 'Hủy phiếu nhập',
+            value: paid,
+            person: supplier ? supplier.name : imp.nccName || 'Nhà cung cấp',
+            method,
+            branch: br,
+            supplierId: supplier ? supplier.id : null,
+            importId: imp.id,
+            importCode: imp.code,
+            note: `Hoàn tiền hủy phiếu nhập ${imp.code}`
+        });
+    }
+
+    // 5. Update import status
+    imp.status = 'cancelled';
+    imp.cancelReason = input.reason || '';
+    const cancelled = timestamp();
+    imp.cancelTime = cancelled.time;
+    imp.cancelledAt = cancelled.createdAt;
+    return imp;
 }
 function payDebt(data, user, input) {
     if (!['thu', 'chi'].includes(input.type)) fail('Loại thanh toán không hợp lệ.');
@@ -721,6 +843,8 @@ function execute(data, user, type, input) {
             return returnGoods(data, user, input, true);
         case 'import':
             return importGoods(data, user, input);
+        case 'cancel_import':
+            return cancelImport(data, user, input);
         case 'debt':
             return payDebt(data, user, input);
         case 'cash':

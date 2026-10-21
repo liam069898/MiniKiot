@@ -53,7 +53,7 @@
             --ios-r-icon: 10px;
             --ios-r-micro: 6px;
             --ios-r-pill: 9999px;
-            
+
             --ios-shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.035), 0 1px 2px 0 rgba(0, 0, 0, 0.02), inset 0 1px 0.5px rgba(255, 255, 255, 0.8);
             --ios-shadow-panel: 0 8px 30px -4px rgba(0, 0, 0, 0.04), 0 2px 6px 0 rgba(0, 0, 0, 0.02), inset 0 1px 0.5px rgba(255, 255, 255, 0.85);
             --ios-shadow-modal: 0 24px 60px -12px rgba(0, 0, 0, 0.22), 0 8px 24px -4px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9);
@@ -127,7 +127,7 @@
         .glass-btn-secondary:active {
             transform: scale(0.97) !important;
         }
-        
+
         .kv-checkbox {
             appearance: none;
             width: 16px;
@@ -222,7 +222,7 @@
             color: #4b5563 !important;
             border: 1px solid #e5e7eb !important;
         }
-        
+
         /* Sticky Table Headers */
         .sticky-th, .sticky-th th, thead.sticky-th th {
             position: sticky;
@@ -259,7 +259,7 @@
         #pos-customer-dropdown > div {
             border-radius: 12px !important;
         }
-        
+
         /* Modal Glass Styling (iOS Action Sheet & Dialog) */
         .kv-modal {
             background: rgba(15, 23, 42, 0.45) !important;
@@ -343,13 +343,13 @@
         /* iOS Table Inset List styling */
         table tbody tr:last-child td:first-child { border-bottom-left-radius: 14px; }
         table tbody tr:last-child td:last-child { border-bottom-right-radius: 14px; }
-        
+
         /* Smooth Minimalist Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(156, 163, 175, 0.4); border-radius: 9999px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(156, 163, 175, 0.7); }
-        
+
         #print-root { display: none; }
         @media print {
             :root, html, body { zoom: 1 !important; height: auto !important; overflow: visible !important; background: white !important; }
@@ -370,7 +370,7 @@
     <!-- KHU VỰC QUẢN LÝ (MANAGEMENT LAYOUT)       -->
     <!-- ========================================== -->
     <div id="management-layout" class="flex flex-col h-full w-full overflow-hidden">
-        
+
         <!-- 1. TOP BAR -->
         <header class="glass-header h-10 px-2.5 sm:px-4 flex items-center justify-between z-40 flex-shrink-0">
             <div class="flex items-center space-x-2 cursor-pointer" onclick="switchView('dashboard')">
@@ -462,15 +462,15 @@
                 <button id="nav-dashboard" onclick="switchView('dashboard')" class="nav-btn px-3 h-7.5 rounded-full font-medium text-[13px] hover:bg-white/10 transition nav-item-active flex-shrink-0">
                     Tổng quan
                 </button>
-                
+
                 <!-- Mega Dropdown Hàng hóa -->
                 <div class="group relative h-full flex items-center flex-shrink-0" id="hanghoa-dropdown-wrapper">
-                    <button id="nav-products" onclick="switchView('products')" class="nav-btn px-2.5 sm:px-3 h-7.5 rounded-full font-medium text-[13px] hover:bg-white/10 transition inline-flex items-center space-x-1">
+                    <button id="nav-products" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="hanghoa-mega-menu" class="nav-btn px-2.5 sm:px-3 h-7.5 rounded-full font-medium text-[13px] hover:bg-white/10 transition inline-flex items-center space-x-1">
                         <span>Hàng hóa</span>
                         <svg class="w-3 h-3 opacity-70 group-hover:opacity-100 transition-transform group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
                     </button>
-                    <!-- Hover Dropdown Menu -->
-                    <div id="hanghoa-mega-menu" class="hidden group-hover:block absolute left-0 top-full pt-1.5 z-50">
+                    <!-- Dropdown Menu -->
+                    <div id="hanghoa-mega-menu" class="hidden absolute left-0 top-full pt-1 z-50" aria-label="Menu Hàng hóa">
                         <div class="w-[230px] glass-card text-gray-800 rounded-2xl shadow-2xl border border-white/80 py-2 px-2 backdrop-blur-2xl bg-white/95">
                             <button onclick="switchView('products')" class="w-full text-left py-2 px-3 rounded-xl font-medium text-gray-900 hover:bg-blue-50/80 hover:text-[#0066cc] transition flex items-center space-x-2.5">
                                 <svg class="w-4 h-4 text-[#0066cc]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
@@ -487,15 +487,15 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Mega Dropdown Mua hàng -->
                 <div class="group relative h-full flex items-center flex-shrink-0" id="muahang-dropdown-wrapper">
-                    <button id="nav-imports" onclick="switchView('imports')" class="nav-btn px-2.5 sm:px-3 h-7.5 rounded-full font-medium text-[13px] hover:bg-white/10 transition inline-flex items-center space-x-1">
+                    <button id="nav-imports" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="muahang-mega-menu" class="nav-btn px-2.5 sm:px-3 h-7.5 rounded-full font-medium text-[13px] hover:bg-white/10 transition inline-flex items-center space-x-1">
                         <span>Mua hàng</span>
                         <svg class="w-3 h-3 opacity-70 group-hover:opacity-100 transition-transform group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
                     </button>
-                    <!-- Hover Dropdown Menu -->
-                    <div id="muahang-mega-menu" class="hidden group-hover:block absolute left-0 top-full pt-1.5 z-50">
+                    <!-- Dropdown Menu -->
+                    <div id="muahang-mega-menu" class="hidden absolute left-0 top-full pt-1 z-50" aria-label="Menu Mua hàng">
                         <div class="w-[210px] glass-card text-gray-800 rounded-2xl shadow-2xl border border-white/80 py-2 px-2 backdrop-blur-2xl bg-white/95">
                             <button onclick="switchView('imports')" class="w-full text-left py-2 px-3 rounded-xl font-medium text-gray-900 hover:bg-blue-50/80 hover:text-[#0066cc] transition flex items-center space-x-2.5">
                                 <svg class="w-4 h-4 text-[#0066cc]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
@@ -879,6 +879,11 @@
                     </div>
                 </div>
                 <div class="flex items-center space-x-2 self-end sm:self-auto flex-shrink-0">
+                    <select id="import-status-filter" onchange="renderImports()" class="bg-white/80 backdrop-blur-sm border border-gray-200/90 rounded-xl py-1.5 px-3 text-[12px] text-gray-700 font-medium focus:outline-none focus:border-[#0066cc] shadow-xs">
+                        <option value="all" selected>Tất cả trạng thái</option>
+                        <option value="imported">Đã nhập hàng</option>
+                        <option value="cancelled">Đã hủy</option>
+                    </select>
                     <select id="import-date-filter" onchange="renderImports()" class="bg-white/80 backdrop-blur-sm border border-gray-200/90 rounded-xl py-1.5 px-3 text-[12px] text-gray-700 font-medium focus:outline-none focus:border-[#0066cc] shadow-xs">
                         <option value="all" selected>Tất cả thời gian</option>
                         <option value="today">Hôm nay</option>
@@ -1117,7 +1122,7 @@
                         <h1 class="text-[17px] sm:text-[18px] font-bold text-gray-900 tracking-tight">Báo cáo & Phân tích kinh doanh</h1>
                         <div class="text-[11.5px] text-gray-500 font-medium">Chi nhánh: <span id="rep-branch-name" class="font-bold text-[#0066cc]">Kalo HCM</span></div>
                     </div>
-                    
+
                     <!-- Sub-tabs Segmented Pills (iOS Capsule Style) -->
                     <div class="inline-flex max-w-full overflow-x-auto no-scrollbar p-1 rounded-2xl bg-gray-200/60 backdrop-blur-md border border-gray-300/40 text-[12px] font-semibold text-gray-600 shadow-inner flex-shrink-0">
                         <button id="rep-tab-sales" onclick="switchReportTab('sales')" class="rep-tab-btn px-3 py-1 rounded-xl transition-all shadow-xs bg-white text-[#0066cc] font-bold whitespace-nowrap">
@@ -1273,7 +1278,7 @@
 
                 <!-- Tabs Wrapper & Add Tab Button sitting together -->
                 <div class="flex items-end h-full pt-1.5 space-x-1.5 flex-shrink-0">
-                    <div id="pos-tabs-wrapper" class="flex items-end space-x-1 overflow-x-auto no-scrollbar"></div>
+                    <div id="pos-tabs-wrapper" role="toolbar" aria-label="Hóa đơn đang mở" class="flex items-end space-x-1 overflow-x-auto no-scrollbar"></div>
                     <button onclick="addPosNewTab()" class="mb-1 h-7 w-7 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white font-bold text-sm transition flex-shrink-0" title="Mở thêm hóa đơn mới">
                         +
                     </button>
@@ -1564,7 +1569,7 @@
                 </div>
                 <button type="button" onclick="closeBillCustomModal()" class="w-8 h-8 rounded-full bg-gray-100/80 hover:bg-gray-200 text-gray-500 hover:text-gray-800 flex items-center justify-center font-bold text-sm transition">✕</button>
             </div>
-            
+
             <div class="overflow-y-auto flex-1 space-y-4 pr-1 text-[13px]">
                 <!-- Paper Size -->
                 <div>
@@ -1716,6 +1721,75 @@
                     <button type="submit" class="glass-btn-primary px-5 py-2 text-white rounded-xl font-bold text-[13px] transition shadow-xs">Lưu hàng hóa</button>
                 </div>
             </form>
+        </div>
+    </div>
+    <!-- 2.1 PRODUCT DETAIL MODAL -->
+    <div id="product-detail-modal" class="kv-modal hidden fixed inset-0 bg-black/40 backdrop-blur-md z-[120] flex items-center justify-center p-4">
+        <div class="bg-white/95 backdrop-blur-2xl rounded-2xl shadow-2xl max-w-xl w-full p-5 sm:p-6 border border-white/80 max-h-[92vh] flex flex-col">
+            <div class="flex justify-between items-center mb-3 border-b border-gray-100/80 pb-2.5 flex-shrink-0">
+                <div class="min-w-0 pr-2">
+                    <h2 class="font-bold text-[17px] text-gray-900 tracking-tight truncate">Chi tiết hàng hóa: <span id="prod-detail-name-title" class="text-[#0066cc]"></span></h2>
+                    <p class="text-[12px] text-gray-500 font-mono" id="prod-detail-code-sub"></p>
+                </div>
+                <button type="button" onclick="document.getElementById('product-detail-modal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-gray-100/80 hover:bg-gray-200/80 text-gray-500 hover:text-gray-800 flex items-center justify-center font-bold text-sm transition flex-shrink-0">✕</button>
+            </div>
+            <div class="overflow-y-auto flex-1 min-h-0 space-y-3.5 pr-1 text-[13px]">
+                <!-- Info cards -->
+                <div class="grid grid-cols-2 gap-2.5 bg-gray-50/80 p-3 rounded-xl border border-gray-200/60 text-gray-700">
+                    <div>Mã hàng: <span id="prod-detail-code" class="font-semibold text-gray-900 font-mono"></span></div>
+                    <div>Mã vạch: <span id="prod-detail-barcode" class="font-medium text-gray-900 font-mono"></span></div>
+                    <div>Nhóm hàng: <span id="prod-detail-category" class="font-medium text-gray-900"></span></div>
+                    <div>Đơn vị tính: <span id="prod-detail-unit" class="font-medium text-gray-900"></span></div>
+                </div>
+                <!-- Price & Stock summary -->
+                <div class="grid grid-cols-3 gap-2.5">
+                    <div class="bg-blue-50/60 border border-blue-200/70 p-3 rounded-xl">
+                        <div class="text-[11.5px] font-medium text-blue-700 mb-0.5">Giá vốn</div>
+                        <div id="prod-detail-cost" class="font-bold text-gray-900 text-[15px] tabular-nums">0 đ</div>
+                    </div>
+                    <div class="bg-emerald-50/60 border border-emerald-200/70 p-3 rounded-xl">
+                        <div class="text-[11.5px] font-medium text-emerald-700 mb-0.5">Giá bán</div>
+                        <div id="prod-detail-price" class="font-bold text-[#0066cc] text-[15px] tabular-nums">0 đ</div>
+                    </div>
+                    <div class="bg-amber-50/60 border border-amber-200/70 p-3 rounded-xl">
+                        <div class="text-[11.5px] font-medium text-amber-800 mb-0.5">Tồn kho hiện tại</div>
+                        <div id="prod-detail-stock" class="font-bold text-gray-900 text-[15px] tabular-nums">0</div>
+                    </div>
+                </div>
+                <!-- Branch stock distribution -->
+                <div class="bg-gray-50/80 p-3 rounded-xl border border-gray-200/60">
+                    <div class="text-[12px] font-bold text-gray-700 mb-1.5 flex items-center justify-between">
+                        <span>Phân bổ tồn kho theo chi nhánh:</span>
+                        <span id="prod-detail-min-stock-info" class="font-normal text-gray-500 text-[11.5px]"></span>
+                    </div>
+                    <div id="prod-detail-branch-list" class="space-y-1.5 text-[12.5px]"></div>
+                </div>
+                <!-- IMEI list if managed by IMEI -->
+                <div id="prod-detail-imei-container" class="hidden bg-purple-50/50 p-3 rounded-xl border border-purple-200/60">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-[12px] font-bold text-purple-900 flex items-center space-x-1.5">
+                            <span>Danh sách Serial / IMEI tồn kho</span>
+                            <span id="prod-detail-imei-badge" class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-100 text-purple-800">0</span>
+                        </span>
+                    </div>
+                    <div id="prod-detail-imei-list" class="flex flex-wrap gap-1 max-h-32 overflow-y-auto pr-1"></div>
+                </div>
+            </div>
+            <!-- Footer actions -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-gray-100/80 mt-3 flex-shrink-0">
+                <div class="flex items-center space-x-2">
+                    <button type="button" onclick="printBarcodeFromDetail()" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white rounded-xl text-[12.5px] font-medium transition shadow-2xs flex items-center space-x-1" title="In tem mã vạch">
+                        <span>In mã</span>
+                    </button>
+                    <button type="button" onclick="editProductFromDetail()" class="px-3 py-1.5 bg-blue-50 hover:bg-[#0066cc] text-[#0066cc] hover:text-white rounded-xl text-[12.5px] font-medium transition shadow-2xs flex items-center space-x-1">
+                        <span>Sửa</span>
+                    </button>
+                    <button type="button" onclick="deleteProductFromDetail()" class="px-3 py-1.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-xl text-[12.5px] font-medium transition shadow-2xs flex items-center space-x-1">
+                        <span>Xóa</span>
+                    </button>
+                </div>
+                <button type="button" onclick="document.getElementById('product-detail-modal').classList.add('hidden')" class="glass-btn-secondary px-4.5 py-1.5 text-gray-700 hover:text-gray-900 rounded-xl font-medium text-[13px] transition shadow-xs">Đóng</button>
+            </div>
         </div>
     </div>
 
@@ -1949,6 +2023,13 @@
                 <h2 class="font-bold text-[17px] text-gray-900 tracking-tight">Chi tiết phiếu nhập: <span id="imp-detail-code" class="text-[#0066cc]"></span></h2>
                 <button onclick="document.getElementById('import-detail-modal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-gray-100/80 hover:bg-gray-200/80 text-gray-500 hover:text-gray-800 flex items-center justify-center font-bold text-sm transition">✕</button>
             </div>
+            <div id="imp-detail-status-banner" class="hidden mb-3 p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[12.5px] flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <span class="font-bold">⚠️ Phiếu nhập này đã bị hủy</span>
+                    <span id="imp-detail-cancel-reason" class="text-red-600 italic"></span>
+                </div>
+                <span id="imp-detail-cancel-time" class="text-[11px] text-red-500"></span>
+            </div>
             <div class="text-[12.5px] text-gray-700 grid grid-cols-2 gap-2 mb-3 bg-gray-50/80 p-3 rounded-xl border border-gray-200/60">
                 <div>Thời gian: <span id="imp-detail-time" class="font-medium text-gray-900"></span></div>
                 <div>Nhà cung cấp: <span id="imp-detail-ncc" class="font-medium text-gray-900"></span></div>
@@ -1986,7 +2067,12 @@
                 <button type="button" onclick="printImportDetailReceipt()" class="glass-btn-secondary px-4 py-2 text-gray-700 rounded-xl font-medium text-[13px] hover:text-gray-900 transition flex items-center space-x-1.5 shadow-xs">
                     <span>🖨️ In phiếu nhập</span>
                 </button>
-                <button onclick="document.getElementById('import-detail-modal').classList.add('hidden')" class="glass-btn-secondary px-4.5 py-2 text-gray-700 hover:text-gray-900 rounded-xl font-medium text-[13px] transition shadow-xs">Đóng</button>
+                <div class="flex items-center space-x-2">
+                    <button id="imp-detail-cancel-btn" type="button" onclick="cancelImport(selectedImportDetail?.code)" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium text-[13px] transition shadow-xs flex items-center space-x-1.5">
+                        <span>✕ Hủy phiếu</span>
+                    </button>
+                    <button onclick="document.getElementById('import-detail-modal').classList.add('hidden')" class="glass-btn-secondary px-4.5 py-2 text-gray-700 hover:text-gray-900 rounded-xl font-medium text-[13px] transition shadow-xs">Đóng</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2487,7 +2573,7 @@
                 </div>
                 <button type="button" onclick="document.getElementById('create-stocktake-modal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-gray-100/80 hover:bg-gray-200/80 text-gray-500 hover:text-gray-800 flex items-center justify-center font-bold text-sm transition">✕</button>
             </div>
-            
+
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3 text-[13px] flex-shrink-0">
                 <div>
                     <label class="block font-medium text-gray-700 mb-1">Chi nhánh kiểm</label>
@@ -2968,7 +3054,7 @@
                         <input id="login-remember" type="checkbox" checked class="rounded border-gray-300 text-[#0066cc] focus:ring-[#0066cc]">
                         <span>Ghi nhớ phiên đăng nhập</span>
                     </label>
-                    
+
                 </div>
 
                 <button type="submit" class="w-full py-2.5 rounded-xl font-bold text-white text-[13.5px] bg-[#0066cc] hover:bg-[#0055b3] shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center space-x-2 mt-2">
@@ -3215,9 +3301,34 @@
     </div>
 
     <!-- Custom Toast Notification (Slide down from top) -->
-    <div id="kv-toast" class="fixed top-4 left-1/2 -translate-x-1/2 -translate-y-24 opacity-0 pointer-events-none bg-gray-900/90 backdrop-blur-2xl text-white px-5 py-2 rounded-full shadow-2xl text-[13px] font-semibold border border-white/25 transform transition-all duration-300 ease-out z-[300] flex items-center space-x-2.5 max-w-[92vw]">
-        <span id="kv-toast-icon" class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50 flex-shrink-0"></span>
+    <div id="kv-toast" role="status" aria-live="polite" aria-atomic="true" class="fixed top-4 left-1/2 -translate-x-1/2 -translate-y-24 opacity-0 pointer-events-none bg-gray-900/90 backdrop-blur-2xl text-white px-5 py-2 rounded-full shadow-2xl text-[13px] font-semibold border border-white/25 transform transition-all duration-300 ease-out z-[300] flex items-center space-x-2.5 max-w-[92vw]">
+        <span id="kv-toast-icon" aria-hidden="true" class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50 flex-shrink-0"></span>
         <span id="kv-toast-msg" class="truncate">Thông báo</span>
+        <button id="kv-toast-close" type="button" onclick="hideToast()" class="hidden min-w-11 min-h-11 -my-2 -mr-3 rounded-full text-white/80 hover:text-white" aria-label="Đóng thông báo">✕</button>
+    </div>
+    <!-- Shared confirmation dialog -->
+    <div id="action-dialog" class="kv-modal hidden fixed inset-0 bg-black/40 backdrop-blur-md z-[250] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="action-dialog-title" aria-describedby="action-dialog-message">
+        <form id="action-dialog-form" class="bg-white/95 backdrop-blur-2xl rounded-2xl shadow-2xl max-w-md w-full p-5 border border-white/80 space-y-3 text-[13px]">
+            <h2 id="action-dialog-title" class="font-bold text-[17px] text-gray-900"></h2>
+            <p id="action-dialog-message" class="text-gray-700 whitespace-pre-line"></p>
+            <div id="action-dialog-input-wrap" class="hidden">
+                <label id="action-dialog-input-label" for="action-dialog-input" class="block font-medium text-gray-700 mb-1"></label>
+                <input id="action-dialog-input" type="text" class="w-full border border-gray-200/85 rounded-xl px-3 py-2">
+            </div>
+            <div id="action-dialog-method-wrap" class="hidden">
+                <label for="action-dialog-method" class="block font-medium text-gray-700 mb-1">Nhận tiền hoàn bằng</label>
+                <select id="action-dialog-method" class="w-full border border-gray-200/85 rounded-xl px-3 py-2">
+                    <option value="cash">Tiền mặt</option>
+                    <option value="transfer">Chuyển khoản</option>
+                    <option value="card">Thẻ</option>
+                </select>
+            </div>
+            <p id="action-dialog-error" role="alert" class="hidden text-[12px] font-medium text-red-600"></p>
+            <div class="flex justify-end gap-2.5 pt-3 border-t border-gray-100/80">
+                <button id="action-dialog-cancel" type="button" class="glass-btn-secondary min-h-11 px-4 text-gray-700 rounded-xl font-medium">Hủy</button>
+                <button id="action-dialog-confirm" type="submit" class="min-h-11 px-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold">Xác nhận</button>
+            </div>
+        </form>
     </div>
 
     <!-- Load App Scripts -->

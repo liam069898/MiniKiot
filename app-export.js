@@ -207,23 +207,46 @@ function exportTableToCSV(type) {
             'Giá bán',
             'Tồn kho',
             'Đơn vị tính',
-            'Trạng thái',
             'Chi nhánh'
         ];
-        rows = (KVStore.data.products || [])
-            .filter((p) => isAll || (p.branch || FALLBACK_BRANCH) === currentBranch)
-            .map((p) => [
-                p.code,
-                `"${(p.name || '').replace(/"/g, '""')}"`,
-                `"${p.barcode || ''}"`,
-                `"${p.category || ''}"`,
-                p.costPrice || 0,
-                p.price || 0,
-                p.stock || 0,
-                `"${p.unit || ''}"`,
-                p.status === 'active' ? 'Đang kinh doanh' : 'Ngừng KD',
-                `"${p.branch || currentBranch}"`
-            ]);
+        let exportList;
+        if (isAll) {
+            const prodMap = new Map();
+            (KVStore.data.products || []).forEach((p) => {
+                const code = p.code;
+                if (!prodMap.has(code)) {
+                    prodMap.set(code, {
+                        ...p,
+                        stock: 0,
+                        branchStocks: []
+                    });
+                }
+                const item = prodMap.get(code);
+                const bName = p.branch || FALLBACK_BRANCH;
+                const bStock = Number(p.stock) || 0;
+                item.stock += bStock;
+                item.branchStocks.push({ branch: bName, stock: bStock });
+            });
+            exportList = Array.from(prodMap.values()).map((item) => {
+                item.branch = item.branchStocks.map((b) => `${b.branch}: ${b.stock}`).join(' · ');
+                return item;
+            });
+        } else {
+            exportList = (KVStore.data.products || []).filter(
+                (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
+            );
+        }
+        rows = exportList.map((p) => [
+            p.code,
+            `"${(p.name || '').replace(/"/g, '""')}"`,
+            `"${p.barcode || ''}"`,
+            `"${p.category || ''}"`,
+            p.costPrice || 0,
+            p.price || 0,
+            p.stock || 0,
+            `"${p.unit || ''}"`,
+            `"${p.branch || currentBranch}"`
+        ]);
     } else if (type === 'invoices') {
         filename = `Danh_sach_hoa_don_${branchTag}_${new Date().toISOString().slice(0, 10)}.csv`;
         headers = [
@@ -261,6 +284,7 @@ function exportTableToCSV(type) {
             'Tên nhà cung cấp',
             'Cần trả NCC',
             'Đã trả',
+            'Trạng thái',
             'Người tạo',
             'Chi nhánh',
             'Ghi chú'
@@ -274,6 +298,7 @@ function exportTableToCSV(type) {
                 `"${(imp.nccName || '').replace(/"/g, '""')}"`,
                 imp.needPay || 0,
                 imp.paid || 0,
+                imp.status === 'cancelled' ? 'Đã hủy' : 'Đã nhập hàng',
                 `"${imp.creator || ''}"`,
                 `"${imp.branch || currentBranch}"`,
                 `"${(imp.note || '').replace(/"/g, '""').replace(/<br>/g, ' ')}"`

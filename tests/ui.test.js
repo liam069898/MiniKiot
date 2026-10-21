@@ -407,3 +407,169 @@ test('Admin can select and view Toàn bộ chi nhánh across views', async () =>
 
     dom.window.close();
 });
+
+test('Toàn bộ chi nhánh aggregates products with same SKU across branches and does not double rows or stock', async () => {
+    const dom = browser(),
+        w = dom.window;
+    w.eval('KVStore.save = async () => {}');
+
+    w.eval(
+        "KVStore.user = { id: 'u_admin', username: 'admin', role: 'admin', branches: ['Kalo HCM', 'Kalo Hà Nội'] }"
+    );
+
+    w.eval(`
+        KVStore.data.branches = [
+            { id: 'b1', name: 'Kalo HCM', isDefault: true },
+            { id: 'b2', name: 'Kalo Hà Nội' }
+        ];
+        KVStore.data.products = [
+            { id: 'p1_hcm', code: 'SP001', name: 'iPhone 15', branch: 'Kalo HCM', stock: 1, minStock: 2, price: 20000000, costPrice: 15000000, status: 'active', hasImei: true, imeis: ['IMEI_HCM_1'] },
+            { id: 'p1_hn', code: 'SP001', name: 'iPhone 15', branch: 'Kalo Hà Nội', stock: 0, minStock: 2, price: 20000000, costPrice: 15000000, status: 'active', hasImei: true, imeis: [] }
+        ];
+    `);
+
+    // Switch to Toàn bộ chi nhánh
+    await w.selectActiveBranch(w.ALL_BRANCHES);
+    assert.equal(w.getCurrentBranch(), w.ALL_BRANCHES);
+
+    // 1. In products list: exactly 1 row rendered for SP001, total stock is 1 (not duplicated)
+    w.renderProducts();
+    const rows = w.document.querySelectorAll('#products-tbody tr');
+    assert.equal(rows.length, 1);
+    const countEl = w.document.getElementById('products-total-count');
+    assert.equal(countEl.textContent, 'Hiển thị 1 hàng hóa');
+    assert.ok(rows[0].textContent.includes('iPhone 15'));
+
+    // 2. viewProductImeis aggregates imeis across branches
+    w.viewProductImeis('SP001');
+    assert.equal(
+        w.document.getElementById('prod-imeis-sub').textContent.includes('Tồn kho: 1'),
+        true
+    );
+
+    // 3. Reports inventory tab
+    w.eval("currentReportTab = 'inventory'");
+    w.renderReports();
+    const repRows = w.document.querySelectorAll('#rep-table-tbody tr');
+    assert.equal(repRows.length, 1);
+
+    dom.window.close();
+});
+
+test('Product table renders Chi tiết button and opens product detail modal with actions', async () => {
+    const dom = browser(),
+        w = dom.window;
+    w.eval('KVStore.save = async () => {}');
+
+    w.renderProducts();
+    const actionBtn = w.document.querySelector('#products-tbody tr td:last-child button');
+    assert.ok(actionBtn);
+    assert.equal(actionBtn.textContent.trim(), 'Chi tiết');
+
+    // Open detail modal
+    w.viewProductDetail('SP001');
+    const modal = w.document.getElementById('product-detail-modal');
+    assert.ok(modal);
+    assert.ok(!modal.classList.contains('hidden'));
+    assert.equal(w.document.getElementById('prod-detail-code').textContent, 'SP001');
+    assert.ok(modal.textContent.includes('In mã'));
+    assert.ok(modal.textContent.includes('Sửa'));
+    assert.ok(modal.textContent.includes('Xóa'));
+
+    dom.window.close();
+});
+
+test('Import cancellation updates UI, hides cancel button, shows status banner and filters', async () => {
+    const dom = browser(),
+        w = dom.window;
+    try {
+        w.eval(`
+            window.commanded = null;
+            KVStore.command = async (cmd, payload) => {
+                window.commanded = { cmd, payload };
+                const imp = KVStore.data.imports.find((i) => i.code === payload.importId);
+                if (imp) {
+                    imp.status = 'cancelled';
+                    imp.cancelReason = payload.reason;
+                    imp.cancelTime = '21/10/2026 15:30';
+                }
+                KVStore._base = copyData(KVStore.data);
+                return { result: imp };
+            };
+        `);
+
+        // 1. Initial render of imports
+        w.renderImports();
+        const initialRows = w.document.querySelectorAll('#import-tbody tr');
+        assert.ok(initialRows.length > 0);
+
+        // 2. Open import detail modal for first import
+        const targetCode = w.eval('KVStore.data.imports[0].code');
+        w.viewImportDetail(targetCode);
+        const modal = w.document.getElementById('import-detail-modal');
+        assert.ok(!modal.classList.contains('hidden'));
+        const banner = w.document.getElementById('imp-detail-status-banner');
+        const cancelBtn = w.document.getElementById('imp-detail-cancel-btn');
+        assert.ok(banner.classList.contains('hidden'));
+        assert.ok(!cancelBtn.classList.contains('hidden'));
+
+        // 3. User cancels import through accessible dialog
+        const pending = w.cancelImport(targetCode);
+        const dialog = w.document.getElementById('action-dialog');
+        assert.ok(!dialog.classList.contains('hidden'));
+        assert.equal(dialog.getAttribute('role'), 'dialog');
+        const paid = w.eval('KVStore.data.imports[0].paid') || 0;
+        assert.equal(
+            w.document.getElementById('action-dialog-method-wrap').classList.contains('hidden'),
+            paid <= 0
+        );
+        w.document.getElementById('action-dialog-input').value = '';
+        w.document.getElementById('action-dialog-form').requestSubmit();
+        assert.ok(!w.document.getElementById('action-dialog-error').classList.contains('hidden'));
+        w.document.getElementById('action-dialog-input').value = 'Hàng lỗi kỹ thuật';
+        w.document.getElementById('action-dialog-method').value = 'transfer';
+        w.document.getElementById('action-dialog-form').requestSubmit();
+        await pending;
+
+        const commanded = w.eval('window.commanded');
+        assert.equal(commanded.cmd, 'cancel_import');
+        assert.equal(commanded.payload.importId, targetCode);
+        assert.equal(commanded.payload.reason, 'Hàng lỗi kỹ thuật');
+        assert.equal(commanded.payload.refundMethod, paid > 0 ? 'transfer' : undefined);
+
+        // 4. Modal is closed and import is marked cancelled
+        assert.ok(modal.classList.contains('hidden'));
+        assert.equal(w.eval('KVStore.data.imports[0].status'), 'cancelled');
+
+        // 5. Open detail of cancelled import
+        w.viewImportDetail(targetCode);
+        assert.ok(!banner.classList.contains('hidden'));
+        assert.ok(banner.textContent.includes('Hàng lỗi kỹ thuật'));
+        assert.ok(cancelBtn.classList.contains('hidden'));
+
+        // 6. Test status filter in imports view
+        const statusFilter = w.document.getElementById('import-status-filter');
+        assert.ok(statusFilter);
+
+        statusFilter.value = 'imported';
+        w.renderImports();
+        let rows = w.document.querySelectorAll('#import-tbody tr');
+        assert.ok(!Array.from(rows).some((r) => r.textContent.includes(targetCode)));
+
+        statusFilter.value = 'cancelled';
+        w.renderImports();
+        rows = w.document.querySelectorAll('#import-tbody tr');
+        assert.ok(
+            Array.from(rows).some(
+                (r) => r.textContent.includes(targetCode) && r.textContent.includes('Đã hủy')
+            )
+        );
+
+        statusFilter.value = 'all';
+        w.renderImports();
+        rows = w.document.querySelectorAll('#import-tbody tr');
+        assert.ok(Array.from(rows).some((r) => r.textContent.includes(targetCode)));
+    } finally {
+        dom.window.close();
+    }
+});

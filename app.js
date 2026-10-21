@@ -94,6 +94,7 @@ function setupCapitalizeInputs() {
 async function initApp() {
     setupCapitalizeInputs();
     setupNavigation();
+    setupModalAccessibility();
     setupKeyboardShortcuts();
     try {
         if (
@@ -196,6 +197,8 @@ function switchView(viewName) {
     if (hanghoaMenu) hanghoaMenu.classList.add('hidden');
     const muahangMenu = document.getElementById('muahang-mega-menu');
     if (muahangMenu) muahangMenu.classList.add('hidden');
+    document.getElementById('nav-products')?.setAttribute('aria-expanded', 'false');
+    document.getElementById('nav-imports')?.setAttribute('aria-expanded', 'false');
 
     if (viewName === 'pos') {
         if (mgmtLayout) {
@@ -249,61 +252,121 @@ function switchView(viewName) {
 }
 
 function setupNavigation() {
-    // Hover & click listeners for Hàng hóa & Mua hàng dropdowns
-    const hanghoaWrap = document.getElementById('hanghoa-dropdown-wrapper');
-    const hanghoaMenu = document.getElementById('hanghoa-mega-menu');
-    if (hanghoaWrap && hanghoaMenu) {
-        hanghoaWrap.addEventListener('mouseenter', () => {
-            hanghoaMenu.classList.remove('hidden');
-        });
-        hanghoaWrap.addEventListener('mouseleave', () => {
-            hanghoaMenu.classList.add('hidden');
-        });
-        const hhBtn = document.getElementById('nav-products');
-        if (hhBtn) {
-            hhBtn.addEventListener('click', (e) => {
-                if (e.target.closest('svg')) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    hanghoaMenu.classList.toggle('hidden');
-                }
-            });
+    const navDropdowns = [
+        {
+            wrapperId: 'hanghoa-dropdown-wrapper',
+            buttonId: 'nav-products',
+            menuId: 'hanghoa-mega-menu',
+            defaultView: 'products'
+        },
+        {
+            wrapperId: 'muahang-dropdown-wrapper',
+            buttonId: 'nav-imports',
+            menuId: 'muahang-mega-menu',
+            defaultView: 'imports'
         }
-    }
+    ];
 
-    const muahangWrap = document.getElementById('muahang-dropdown-wrapper');
-    const muahangMenu = document.getElementById('muahang-mega-menu');
-    if (muahangWrap && muahangMenu) {
-        muahangWrap.addEventListener('mouseenter', () => {
-            muahangMenu.classList.remove('hidden');
-        });
-        muahangWrap.addEventListener('mouseleave', () => {
-            muahangMenu.classList.add('hidden');
-        });
-        const mhBtn = document.getElementById('nav-imports');
-        if (mhBtn) {
-            mhBtn.addEventListener('click', (e) => {
-                if (e.target.closest('svg')) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    muahangMenu.classList.toggle('hidden');
+    navDropdowns.forEach(({ wrapperId, buttonId, menuId, defaultView }) => {
+        const wrapper = document.getElementById(wrapperId);
+        const button = document.getElementById(buttonId);
+        const menu = document.getElementById(menuId);
+        if (!button || !menu) return;
+
+        let closeTimer = null;
+
+        const openMenu = () => {
+            clearTimeout(closeTimer);
+            navDropdowns.forEach((other) => {
+                if (other.menuId !== menuId) {
+                    const otherMenu = document.getElementById(other.menuId);
+                    const otherBtn = document.getElementById(other.buttonId);
+                    if (otherMenu) otherMenu.classList.add('hidden');
+                    if (otherBtn) otherBtn.setAttribute('aria-expanded', 'false');
                 }
             });
+            menu.style.top = '';
+            menu.style.left = '';
+            menu.classList.remove('hidden');
+            button.setAttribute('aria-expanded', 'true');
+        };
+
+        const closeMenu = () => {
+            clearTimeout(closeTimer);
+            menu.classList.add('hidden');
+            button.setAttribute('aria-expanded', 'false');
+        };
+
+        const scheduleClose = () => {
+            clearTimeout(closeTimer);
+            closeTimer = setTimeout(closeMenu, 180);
+        };
+
+        // Hover: mouse enter shows, mouse leave schedules auto-hide
+        if (wrapper) {
+            wrapper.addEventListener('mouseenter', openMenu);
+            wrapper.addEventListener('mouseleave', scheduleClose);
         }
-    }
+        button.addEventListener('mouseenter', openMenu);
+        button.addEventListener('mouseleave', scheduleClose);
+        menu.addEventListener('mouseenter', openMenu);
+        menu.addEventListener('mouseleave', scheduleClose);
+
+        // Click on button: if open, navigate to default view; if closed, open
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (menu.classList.contains('hidden')) {
+                openMenu();
+            } else {
+                switchView(defaultView);
+                closeMenu();
+            }
+        });
+
+        // Click on menu items: immediately close
+        menu.addEventListener('click', () => {
+            closeMenu();
+        });
+
+        // Keyboard accessibility
+        button.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                openMenu();
+                menu.querySelector('button')?.focus();
+            }
+        });
+        menu.addEventListener('keydown', (event) => {
+            const items = [...menu.querySelectorAll('button')];
+            const index = items.indexOf(document.activeElement);
+            if (event.key === 'Escape') {
+                closeMenu();
+                button.setAttribute('aria-expanded', 'false');
+                button.focus();
+            } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                const step = event.key === 'ArrowDown' ? 1 : -1;
+                items[(index + step + items.length) % items.length]?.focus();
+            }
+        });
+    });
 
     // Dropdown close on outside click
     document.addEventListener('click', (e) => {
-        const dropWrapper = document.getElementById('muahang-dropdown-wrapper');
-        const megaMenu = document.getElementById('muahang-mega-menu');
-        if (megaMenu && dropWrapper && !dropWrapper.contains(e.target)) {
-            megaMenu.classList.add('hidden');
-        }
-        const hanghoaWrapper = document.getElementById('hanghoa-dropdown-wrapper');
-        const hhMenu = document.getElementById('hanghoa-mega-menu');
-        if (hhMenu && hanghoaWrapper && !hanghoaWrapper.contains(e.target)) {
-            hhMenu.classList.add('hidden');
-        }
+        navDropdowns.forEach(({ buttonId, menuId, wrapperId }) => {
+            const button = document.getElementById(buttonId);
+            const menu = document.getElementById(menuId);
+            const wrapper = document.getElementById(wrapperId);
+            if (
+                menu &&
+                !menu.classList.contains('hidden') &&
+                (!wrapper || !wrapper.contains(e.target)) &&
+                (!menu || !menu.contains(e.target))
+            ) {
+                menu.classList.add('hidden');
+                button?.setAttribute('aria-expanded', 'false');
+            }
+        });
         const branchWrapper = document.getElementById('branch-dropdown-wrapper');
         const branchMenu = document.getElementById('branch-dropdown-menu');
         if (branchMenu && branchWrapper && !branchWrapper.contains(e.target)) {
@@ -327,6 +390,64 @@ function setupNavigation() {
     });
 
     window.addEventListener('resize', updatePosResponsivePanels);
+}
+
+const modalOpeners = new WeakMap();
+const modalFocusableSelector =
+    'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function visibleFocusables(root) {
+    return [...root.querySelectorAll(modalFocusableSelector)].filter(
+        (el) => !el.closest('.hidden') && el.getAttribute('aria-hidden') !== 'true'
+    );
+}
+
+function setupModalAccessibility() {
+    document.querySelectorAll('.kv-modal').forEach((modal) => {
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        const title = modal.querySelector('h2, h3');
+        if (title) {
+            if (!title.id) title.id = `${modal.id}-title`;
+            modal.setAttribute('aria-labelledby', title.id);
+        }
+        modal.querySelectorAll('label:not([for])').forEach((label) => {
+            const control = label.parentElement?.querySelector('input, select, textarea');
+            if (control?.id) label.htmlFor = control.id;
+        });
+        modal.querySelectorAll('button:not([aria-label])').forEach((button) => {
+            if (['✕', '×'].includes(button.textContent.trim()))
+                button.setAttribute('aria-label', 'Đóng');
+        });
+        new MutationObserver(() => {
+            const open = !modal.classList.contains('hidden');
+            if (open && !modalOpeners.has(modal)) {
+                modalOpeners.set(modal, document.activeElement);
+                setTimeout(() => {
+                    if (!modal.contains(document.activeElement))
+                        visibleFocusables(modal)[0]?.focus();
+                });
+            } else if (!open && modalOpeners.has(modal)) {
+                const opener = modalOpeners.get(modal);
+                modalOpeners.delete(modal);
+                if (opener?.isConnected) opener.focus();
+            }
+        }).observe(modal, { attributes: true, attributeFilter: ['class'] });
+        modal.addEventListener('keydown', (event) => {
+            if (event.key !== 'Tab') return;
+            const items = visibleFocusables(modal);
+            if (!items.length) return;
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+    });
 }
 
 function getUserAllowedBranches(user = null) {
@@ -851,11 +972,20 @@ function showToast(msg, type = 'info') {
     }
     toast.classList.remove('-translate-y-24', 'opacity-0', 'pointer-events-none');
     toast.classList.add('translate-y-0', 'opacity-100');
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+    msgEl.classList.toggle('truncate', type !== 'error');
+    document.getElementById('kv-toast-close')?.classList.toggle('hidden', type !== 'error');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-        toast.classList.remove('translate-y-0', 'opacity-100');
-        toast.classList.add('-translate-y-24', 'opacity-0', 'pointer-events-none');
-    }, 2800);
+    if (type === 'error') return;
+    toastTimer = setTimeout(hideToast, 2800);
+}
+
+function hideToast() {
+    const toast = document.getElementById('kv-toast');
+    if (!toast) return;
+    toast.classList.remove('translate-y-0', 'opacity-100');
+    toast.classList.add('-translate-y-24', 'opacity-0', 'pointer-events-none');
 }
 
 // --- 1. DASHBOARD ---
@@ -1256,17 +1386,32 @@ function renderPosScreen() {
         tabsContainer.innerHTML = '';
         state.posTabs.forEach((tab, index) => {
             const isActive = index === state.activePosTab;
-            const tabBtn = document.createElement('div');
+            const tabBtn = document.createElement('button');
+            tabBtn.type = 'button';
+            tabBtn.setAttribute('aria-pressed', String(isActive));
+            tabBtn.setAttribute('aria-label', `Hóa đơn ${tab.name}`);
             tabBtn.className = `${isActive ? 'bg-[#f4f7fb] text-gray-900 shadow-sm border-t border-x border-white/60' : 'bg-white/10 text-white/80 hover:bg-white/20 hover:text-white border-transparent'} h-9 px-2.5 sm:px-3.5 rounded-t-xl flex items-center space-x-1.5 sm:space-x-2 font-bold text-[12px] sm:text-[12.5px] cursor-pointer transition whitespace-nowrap flex-shrink-0`;
             tabBtn.innerHTML = renderHTML`
                 <svg class="w-3.5 h-3.5 ${isActive ? 'text-[#0066cc]' : 'text-white'} flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
                 </svg>
                 <span>${tab.name}</span>
-                ${trustedHTML(state.posTabs.length > 1 ? renderHTML`<button onclick="closePosTab(event, ${index})" class="text-gray-400 hover:text-red-500 font-bold text-xs ml-1 transition">✕</button>` : '')}
             `;
             tabBtn.onclick = () => switchPosTab(index);
-            tabsContainer.appendChild(tabBtn);
+            const tabItem = document.createElement('div');
+            tabItem.className = 'flex items-end flex-shrink-0';
+            tabItem.appendChild(tabBtn);
+            if (state.posTabs.length > 1) {
+                const closeBtn = document.createElement('button');
+                closeBtn.type = 'button';
+                closeBtn.className =
+                    'mb-0.5 min-w-11 min-h-9 rounded-full text-white/80 hover:text-red-200 font-bold text-sm transition';
+                closeBtn.setAttribute('aria-label', `Đóng hóa đơn ${tab.name}`);
+                closeBtn.textContent = '✕';
+                closeBtn.onclick = (event) => closePosTab(event, index);
+                tabItem.appendChild(closeBtn);
+            }
+            tabsContainer.appendChild(tabItem);
         });
     }
 
@@ -3060,9 +3205,45 @@ function renderProducts() {
     const currentBranch = getCurrentBranch();
     const isAll = currentBranch === ALL_BRANCHES;
     const q = (document.getElementById('product-search-input')?.value || '').toLowerCase().trim();
-    let list = (KVStore.data.products || []).filter(
-        (p) => isAll || (p.branch || FALLBACK_BRANCH) === currentBranch
-    );
+    let list;
+    if (isAll) {
+        const prodMap = new Map();
+        (KVStore.data.products || []).forEach((p) => {
+            const code = p.code;
+            if (!prodMap.has(code)) {
+                prodMap.set(code, {
+                    ...p,
+                    stock: 0,
+                    minStock: 0,
+                    imeis: [],
+                    branchStocks: []
+                });
+            }
+            const item = prodMap.get(code);
+            const bName = p.branch || FALLBACK_BRANCH;
+            const bStock = Number(p.stock) || 0;
+            item.stock += bStock;
+            item.minStock = Math.max(item.minStock, Number(p.minStock) || 0);
+            if (Array.isArray(p.imeis)) {
+                item.imeis.push(...p.imeis);
+            }
+            item.branchStocks.push({ branch: bName, stock: bStock });
+            if (p.status === 'active') item.status = 'active';
+            if (!item.price && p.price) item.price = p.price;
+            if (!item.costPrice && p.costPrice) item.costPrice = p.costPrice;
+        });
+
+        list = Array.from(prodMap.values()).map((item) => {
+            item.branchBreakdown = item.branchStocks
+                .map((b) => `${b.branch}: ${b.stock}`)
+                .join(' · ');
+            return item;
+        });
+    } else {
+        list = (KVStore.data.products || []).filter(
+            (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
+        );
+    }
 
     if (productFilterCategory !== 'all') {
         list = list.filter((p) => p.category === productFilterCategory);
@@ -3095,40 +3276,166 @@ function renderProducts() {
 
     list.forEach((p) => {
         const tr = document.createElement('tr');
-        tr.className = 'table-row-hover border-b border-gray-100/70 transition text-[13px]';
+        tr.className =
+            'table-row-hover border-b border-gray-100/70 transition text-[13px] cursor-pointer';
         const isLow = (p.minStock || 0) > 0 && p.stock < p.minStock;
         tr.innerHTML = renderHTML`
-            <td class="py-3 pl-3 pr-2 text-center"><input type="checkbox" class="kv-checkbox"></td>
+            <td class="py-3 pl-3 pr-2 text-center" onclick="event.stopPropagation()"><input type="checkbox" class="kv-checkbox"></td>
             <td class="py-3 px-3 font-semibold text-[#0066cc] font-mono">${p.code}</td>
             <td class="py-3 px-3 font-medium text-gray-900 leading-snug">
                 ${p.name}
-                ${trustedHTML(isAll && p.branch ? renderHTML`<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10.5px] font-semibold bg-blue-50 text-blue-700 ml-1.5">${p.branch}</span>` : '')}
-                ${trustedHTML(p.hasImei ? renderHTML`<button type="button" onclick="viewProductImeis('${p.code}')" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10.5px] font-bold kv-badge kv-badge-purple ml-1.5 transition cursor-pointer" title="Bấm để xem danh sách IMEI tồn kho">IMEI (${(p.imeis || []).length})</button>` : '')}
+                ${trustedHTML(isAll ? renderHTML`<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10.5px] font-semibold bg-blue-50 text-blue-700 ml-1.5" title="${p.branchBreakdown || 'Toàn bộ chi nhánh'}">Toàn bộ chi nhánh (${p.branchBreakdown || ''})</span>` : p.branch ? renderHTML`<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10.5px] font-semibold bg-blue-50 text-blue-700 ml-1.5">${p.branch}</span>` : '')}
+                ${trustedHTML(p.hasImei ? renderHTML`<button type="button" onclick="viewProductImeis('${p.code}')" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10.5px] font-bold kv-badge kv-badge-purple ml-1.5 transition cursor-pointer" title="Bấm để xem danh sách IMEI tồn kho (${isAll ? 'Toàn bộ chi nhánh' : p.branch || currentBranch})">IMEI (${(p.imeis || []).length})</button>` : '')}
             </td>
             <td class="py-3 px-3 text-gray-600">${p.category}</td>
             <td class="py-3 px-3 text-right text-gray-600 tabular-nums">${formatVND(p.costPrice)}</td>
             <td class="py-3 px-3 text-right font-bold text-gray-900 tabular-nums">${formatVND(p.price)}</td>
             <td class="py-3 px-3 text-center">
-                <span class="kv-badge ${isLow ? 'kv-badge-danger' : 'kv-badge-success'} tabular-nums">
+                <span class="kv-badge ${isLow ? 'kv-badge-danger' : 'kv-badge-success'} tabular-nums" title="${isAll && p.branchBreakdown ? p.branchBreakdown : ''}">
                     ${p.stock}
                 </span>
             </td>
-            <td class="py-3 px-3 text-center">
-                <span class="kv-badge ${p.status === 'active' ? 'kv-badge-success' : 'kv-badge-secondary'}">
-                    ${p.status === 'active' ? 'Đang KD' : 'Ngừng KD'}
-                </span>
-            </td>
-            <td class="py-3 pr-4 text-right space-x-1.5 whitespace-nowrap">
-                <button onclick="openBarcodeModal('${p.code}')" class="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white rounded-lg text-[12px] font-medium transition shadow-2xs" title="In tem mã vạch">In mã</button>
-                <button onclick="editProduct('${p.code}')" class="px-2.5 py-1 bg-blue-50 hover:bg-[#0066cc] text-[#0066cc] hover:text-white rounded-lg text-[12px] font-medium transition shadow-2xs">Sửa</button>
-                <button onclick="deleteProduct('${p.code}')" class="px-2.5 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-[12px] font-medium transition shadow-2xs">Xóa</button>
+            <td class="py-3 px-3 text-center" onclick="event.stopPropagation()">
+                <button onclick="viewProductDetail('${p.code}')" class="px-2.5 py-1 bg-gray-100 hover:bg-[#0066cc] hover:text-white text-gray-700 rounded-lg text-[12px] font-medium transition shadow-2xs">Chi tiết</button>
             </td>
         `;
+        tr.onclick = () => viewProductDetail(p.code);
         tbody.appendChild(tr);
     });
 
     const countEl = document.getElementById('products-total-count');
     if (countEl) countEl.textContent = `Hiển thị ${list.length} hàng hóa`;
+}
+
+// Product Detail Modal
+let currentDetailProductCode = null;
+
+function viewProductDetail(code) {
+    const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
+    let prod;
+    if (isAll) {
+        const matches = (KVStore.data.products || []).filter((p) => p.code === code);
+        if (!matches.length) return;
+        const totalStock = matches.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
+        const allImeis = matches.flatMap((p) => (Array.isArray(p.imeis) ? p.imeis : []));
+        const branchStocks = matches.map((p) => ({
+            branch: p.branch || FALLBACK_BRANCH,
+            stock: Number(p.stock) || 0
+        }));
+        prod = {
+            ...matches[0],
+            stock: totalStock,
+            imeis: allImeis,
+            branchStocks,
+            branch: 'Toàn bộ chi nhánh'
+        };
+    } else {
+        prod = (KVStore.data.products || []).find(
+            (p) => p.code === code && (p.branch || FALLBACK_BRANCH) === currentBranch
+        );
+        if (prod) {
+            prod = {
+                ...prod,
+                branchStocks: [
+                    {
+                        branch: prod.branch || currentBranch,
+                        stock: Number(prod.stock) || 0
+                    }
+                ]
+            };
+        }
+    }
+    if (!prod) return;
+
+    currentDetailProductCode = prod.code;
+
+    const modal = document.getElementById('product-detail-modal');
+    if (!modal) return;
+
+    const titleEl = document.getElementById('prod-detail-name-title');
+    if (titleEl) titleEl.textContent = prod.name;
+    const subEl = document.getElementById('prod-detail-code-sub');
+    if (subEl) subEl.textContent = `Mã SKU: ${prod.code}`;
+    const codeEl = document.getElementById('prod-detail-code');
+    if (codeEl) codeEl.textContent = prod.code;
+    const barcodeEl = document.getElementById('prod-detail-barcode');
+    if (barcodeEl) barcodeEl.textContent = prod.barcode || '—';
+    const catEl = document.getElementById('prod-detail-category');
+    if (catEl) catEl.textContent = prod.category || 'Chung';
+    const unitEl = document.getElementById('prod-detail-unit');
+    if (unitEl) unitEl.textContent = prod.unit || 'Chiếc';
+    const costEl = document.getElementById('prod-detail-cost');
+    if (costEl) costEl.textContent = `${formatVND(prod.costPrice)} đ`;
+    const priceEl = document.getElementById('prod-detail-price');
+    if (priceEl) priceEl.textContent = `${formatVND(prod.price)} đ`;
+    const stockEl = document.getElementById('prod-detail-stock');
+    if (stockEl) stockEl.textContent = prod.stock;
+
+    const minStock = Number(prod.minStock) || 0;
+    const minStockInfo = document.getElementById('prod-detail-min-stock-info');
+    if (minStockInfo) {
+        minStockInfo.textContent =
+            minStock > 0 ? `Định mức tối thiểu: ${minStock}` : 'Không cài định mức';
+    }
+
+    const branchListEl = document.getElementById('prod-detail-branch-list');
+    if (branchListEl) {
+        branchListEl.innerHTML = (prod.branchStocks || [])
+            .map(
+                (b) => renderHTML`
+            <div class="flex items-center justify-between py-1 px-2.5 rounded-lg bg-white border border-gray-100">
+                <span class="font-medium text-gray-800">${b.branch}</span>
+                <span class="font-bold font-mono ${b.stock <= 0 ? 'text-rose-600' : 'text-gray-900'}">${b.stock} ${prod.unit || 'Chiếc'}</span>
+            </div>`
+            )
+            .join('');
+    }
+
+    const imeiContainer = document.getElementById('prod-detail-imei-container');
+    const imeiBadge = document.getElementById('prod-detail-imei-badge');
+    const imeiListEl = document.getElementById('prod-detail-imei-list');
+    if (prod.hasImei && imeiContainer) {
+        imeiContainer.classList.remove('hidden');
+        const imeis = prod.imeis || [];
+        if (imeiBadge) imeiBadge.textContent = `${imeis.length} IMEI`;
+        if (imeiListEl) {
+            if (imeis.length === 0) {
+                imeiListEl.innerHTML = renderHTML`<span class="text-gray-400 italic text-[12px]">Chưa có số IMEI nào tồn kho</span>`;
+            } else {
+                imeiListEl.innerHTML = imeis
+                    .map(
+                        (im) =>
+                            renderHTML`<span class="px-2 py-0.5 rounded bg-white text-purple-700 border border-purple-200 font-mono text-[11px] font-semibold">${im}</span>`
+                    )
+                    .join('');
+            }
+        }
+    } else if (imeiContainer) {
+        imeiContainer.classList.add('hidden');
+    }
+
+    modal.classList.remove('hidden');
+}
+
+function printBarcodeFromDetail() {
+    if (!currentDetailProductCode) return;
+    document.getElementById('product-detail-modal')?.classList.add('hidden');
+    openBarcodeModal(currentDetailProductCode);
+}
+
+function editProductFromDetail() {
+    if (!currentDetailProductCode) return;
+    const code = currentDetailProductCode;
+    document.getElementById('product-detail-modal')?.classList.add('hidden');
+    editProduct(code);
+}
+
+function deleteProductFromDetail() {
+    if (!currentDetailProductCode) return;
+    const code = currentDetailProductCode;
+    document.getElementById('product-detail-modal')?.classList.add('hidden');
+    deleteProduct(code);
 }
 
 // Helper: Parse IMEI/Serial strings from multiline or delimited input
@@ -3145,9 +3452,24 @@ let currentViewingProductImeis = null;
 
 function viewProductImeis(code) {
     const currentBranch = getCurrentBranch();
-    const prod = (KVStore.data.products || []).find(
-        (p) => p.code === code && (p.branch || FALLBACK_BRANCH) === currentBranch
-    );
+    const isAll = currentBranch === ALL_BRANCHES;
+    let prod;
+    if (isAll) {
+        const matches = (KVStore.data.products || []).filter((p) => p.code === code);
+        if (!matches.length) return;
+        const totalStock = matches.reduce((sum, p) => sum + (p.stock || 0), 0);
+        const allImeis = matches.flatMap((p) => p.imeis || []);
+        prod = {
+            ...matches[0],
+            stock: totalStock,
+            imeis: allImeis,
+            branch: 'Toàn bộ chi nhánh'
+        };
+    } else {
+        prod = (KVStore.data.products || []).find(
+            (p) => p.code === code && (p.branch || FALLBACK_BRANCH) === currentBranch
+        );
+    }
     if (!prod) return;
 
     currentViewingProductImeis = prod;
@@ -3155,7 +3477,7 @@ function viewProductImeis(code) {
     if (!modal) return;
 
     document.getElementById('prod-imeis-sub').textContent =
-        `${prod.name} (${prod.code}) - Tồn kho: ${prod.stock} - Chi nhánh: ${currentBranch}`;
+        `${prod.name} (${prod.code}) - Tồn kho: ${prod.stock} - Chi nhánh: ${isAll ? 'Toàn bộ chi nhánh' : currentBranch}`;
     document.getElementById('search-prod-imei').value = '';
     renderProductImeisList();
     modal.classList.remove('hidden');
@@ -3417,7 +3739,13 @@ function editProduct(code) {
 async function deleteProduct(code) {
     const currentBranch = getCurrentBranch();
     const isAll = currentBranch === ALL_BRANCHES;
-    if (confirm(`Bạn có chắc chắn muốn xóa sản phẩm ${code}?`)) {
+    if (
+        await askAction({
+            title: 'Xóa sản phẩm',
+            message: `Xóa sản phẩm ${code}? Thao tác này không thể hoàn tác.`,
+            confirmText: 'Xóa sản phẩm'
+        })
+    ) {
         KVStore.data.products = (KVStore.data.products || []).filter(
             (p) => !(p.code === code && (isAll || (p.branch || FALLBACK_BRANCH) === currentBranch))
         );
@@ -3796,7 +4124,12 @@ async function saveStocktake(isBalance) {
 }
 
 async function balanceDraftStocktake(id) {
-    if (!confirm('Chốt phiếu kiểm? Nếu tồn đã thay đổi, cần kiểm đếm lại.')) return;
+    const confirmed = await askAction({
+        title: 'Chốt phiếu kiểm',
+        message: 'Tồn kho sẽ được cân bằng theo số đã kiểm. Nếu tồn đã thay đổi, cần kiểm đếm lại.',
+        confirmText: 'Chốt phiếu kiểm'
+    });
+    if (!confirmed) return;
     await KVStore.command('stocktake', { id, balance: true });
     document.getElementById('stocktake-detail-modal')?.classList.add('hidden');
     renderAllViews();
@@ -4142,7 +4475,12 @@ async function saveTransfer() {
 }
 
 async function confirmReceiveTransfer(id) {
-    if (!confirm('Xác nhận đã nhận đủ hàng và serial?')) return;
+    const confirmed = await askAction({
+        title: 'Nhận hàng chuyển kho',
+        message: 'Xác nhận đã nhận đủ hàng và serial? Tồn kho chi nhánh nhận sẽ được cập nhật.',
+        confirmText: 'Xác nhận nhận hàng'
+    });
+    if (!confirmed) return;
     await KVStore.command('receive', { id });
     document.getElementById('transfer-detail-modal')?.classList.add('hidden');
     renderAllViews();
@@ -4432,12 +4770,16 @@ function openInvoiceDetailModal(inv) {
 
 // 4.1 HỦY HÓA ĐƠN (CANCEL INVOICE WITH AUTOMATIC STOCK & CASHBOOK REVERSAL)
 async function cancelInvoice(code) {
-    const reason = prompt(
-        `Hủy hóa đơn ${code}? Chỉ phần chưa trả sẽ được đảo. Nhập lý do:`,
-        'Khách hủy'
-    );
-    if (reason === null) return;
-    await KVStore.command('cancel', { invoiceId: code, reason });
+    const result = await askAction({
+        title: `Hủy hóa đơn ${code}`,
+        message: 'Chỉ phần chưa trả hàng sẽ được đảo tồn kho, tiền và công nợ.',
+        confirmText: 'Xác nhận hủy hóa đơn',
+        inputLabel: 'Lý do hủy',
+        value: 'Khách hủy',
+        validate: (text) => (!text ? 'Vui lòng nhập lý do hủy.' : '')
+    });
+    if (!result) return;
+    await KVStore.command('cancel', { invoiceId: code, reason: result.value });
     document.getElementById('invoice-detail-modal')?.classList.add('hidden');
     renderAllViews();
     showToast('Đã hủy và đối soát tiền/hàng còn lại.', 'success');
@@ -4616,9 +4958,16 @@ function renderImports() {
     const isAll = currentBranch === ALL_BRANCHES;
     const q = (document.getElementById('import-search-input')?.value || '').toLowerCase().trim();
     const dateFilter = document.getElementById('import-date-filter')?.value || 'all';
+    const statusFilter = document.getElementById('import-status-filter')?.value || 'all';
     let list = (KVStore.data.imports || []).filter(
         (imp) => isAll || (imp.branch || FALLBACK_BRANCH) === currentBranch
     );
+
+    if (statusFilter === 'imported') {
+        list = list.filter((imp) => imp.status !== 'cancelled');
+    } else if (statusFilter === 'cancelled') {
+        list = list.filter((imp) => imp.status === 'cancelled');
+    }
 
     if (dateFilter !== 'all') {
         list = list.filter((imp) => matchesDateFilter(imp.time, dateFilter));
@@ -4644,35 +4993,44 @@ function renderImports() {
     }
 
     list.forEach((row) => {
+        const isCancelled = row.status === 'cancelled';
         let methodBadge = '';
-        const pMethod = row.paymentMethod || 'bank';
-        if (pMethod === 'cash') {
-            methodBadge = trustedHTML('<span class="kv-badge kv-badge-warning">Tiền mặt</span>');
-        } else if (pMethod === 'debt' || (row.needPay > row.paid && row.paid === 0)) {
-            methodBadge = trustedHTML('<span class="kv-badge kv-badge-danger">Công nợ</span>');
+        if (isCancelled) {
+            methodBadge = trustedHTML('<span class="kv-badge kv-badge-danger">Đã hủy</span>');
         } else {
-            methodBadge = trustedHTML('<span class="kv-badge kv-badge-info">Chuyển khoản</span>');
+            const pMethod = row.paymentMethod || 'bank';
+            if (pMethod === 'cash') {
+                methodBadge = trustedHTML(
+                    '<span class="kv-badge kv-badge-warning">Tiền mặt</span>'
+                );
+            } else if (pMethod === 'debt' || (row.needPay > row.paid && row.paid === 0)) {
+                methodBadge = trustedHTML('<span class="kv-badge kv-badge-danger">Công nợ</span>');
+            } else {
+                methodBadge = trustedHTML(
+                    '<span class="kv-badge kv-badge-info">Chuyển khoản</span>'
+                );
+            }
         }
 
         const tr = document.createElement('tr');
-        tr.className =
-            'table-row-hover transition cursor-pointer text-[13px] border-b border-gray-100/70';
+        tr.className = `table-row-hover transition cursor-pointer text-[13px] border-b border-gray-100/70 ${isCancelled ? 'bg-red-50/40 opacity-75' : ''}`;
         tr.innerHTML = renderHTML`
             <td class="py-3 pl-3 pr-2 text-center"><input type="checkbox" class="kv-checkbox"></td>
             <td class="py-3 px-2 text-center text-gray-400 hover:text-yellow-500" onclick="event.stopPropagation(); toggleStar(this)">
                 <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
             </td>
             <td class="py-3 px-3 font-semibold text-[#0066cc] font-mono">
-                ${row.code}
+                <span class="${isCancelled ? 'line-through text-gray-500' : ''}">${row.code}</span>
+                ${trustedHTML(isCancelled ? renderHTML`<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10.5px] font-semibold bg-red-100 text-red-700">Đã hủy</span>` : '')}
                 ${trustedHTML(isAll && row.branch ? renderHTML`<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10.5px] font-semibold bg-gray-100 text-gray-700">${row.branch}</span>` : '')}
             </td>
             <td class="py-3 px-3 text-gray-600 font-mono text-[12px]">${row.time}</td>
             <td class="py-3 px-3 text-gray-600 font-mono">${row.nccCode || ''}</td>
             <td class="py-3 px-3 text-gray-900 font-medium">${row.nccName || ''}</td>
-            <td class="py-3 px-3 text-right font-medium text-gray-800 tabular-nums">${formatVND(row.needPay)}</td>
-            <td class="py-3 px-3 text-right font-bold text-gray-900 tabular-nums">${formatVND(row.paid)}</td>
+            <td class="py-3 px-3 text-right font-medium tabular-nums ${isCancelled ? 'line-through text-gray-400' : 'text-gray-800'}">${formatVND(row.needPay)}</td>
+            <td class="py-3 px-3 text-right font-bold tabular-nums ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}">${formatVND(row.paid)}</td>
             <td class="py-3 px-3 text-center">${methodBadge}</td>
-            <td class="py-3 px-3 text-gray-600 truncate max-w-[200px]">${row.note || ''}</td>
+            <td class="py-3 px-3 text-gray-600 truncate max-w-[200px]">${row.cancelReason ? `[Đã hủy: ${row.cancelReason}] ` : ''}${row.note || ''}</td>
             <td class="py-3 px-3 text-center" onclick="event.stopPropagation()">
                 <button onclick="viewImportDetail('${row.code}')" class="px-2.5 py-1 bg-gray-100 hover:bg-[#0066cc] hover:text-white text-gray-700 rounded-lg text-[12px] font-medium transition shadow-2xs">Chi tiết</button>
             </td>
@@ -4702,6 +5060,30 @@ function viewImportDetail(code) {
     document.getElementById('imp-detail-branch').textContent = imp.branch || FALLBACK_BRANCH;
     document.getElementById('imp-detail-creator').textContent = imp.creator || 'Quản lý kho';
     document.getElementById('imp-detail-note').textContent = imp.note || 'Không có';
+
+    // Status banner & cancel button toggle
+    const banner = document.getElementById('imp-detail-status-banner');
+    const cancelBtn = document.getElementById('imp-detail-cancel-btn');
+    if (banner) {
+        if (imp.status === 'cancelled') {
+            banner.classList.remove('hidden');
+            const reasonEl = document.getElementById('imp-detail-cancel-reason');
+            if (reasonEl)
+                reasonEl.textContent = imp.cancelReason ? `(Lý do: ${imp.cancelReason})` : '';
+            const timeEl = document.getElementById('imp-detail-cancel-time');
+            if (timeEl)
+                timeEl.textContent = imp.cancelTime ? `Thời gian hủy: ${imp.cancelTime}` : '';
+        } else {
+            banner.classList.add('hidden');
+        }
+    }
+    if (cancelBtn) {
+        if (imp.status === 'cancelled') {
+            cancelBtn.classList.add('hidden');
+        } else {
+            cancelBtn.classList.remove('hidden');
+        }
+    }
 
     const tbody = document.getElementById('imp-detail-tbody');
     tbody.innerHTML = '';
@@ -4753,6 +5135,97 @@ function viewImportDetail(code) {
 
 function printImportDetailReceipt() {
     printRegion('import-detail-modal', false);
+}
+
+function askAction({ title, message, confirmText, inputLabel, value = '', method, validate }) {
+    const dialog = document.getElementById('action-dialog');
+    const form = document.getElementById('action-dialog-form');
+    const input = document.getElementById('action-dialog-input');
+    const methodEl = document.getElementById('action-dialog-method');
+    const error = document.getElementById('action-dialog-error');
+    document.getElementById('action-dialog-title').textContent = title;
+    document.getElementById('action-dialog-message').textContent = message;
+    document.getElementById('action-dialog-confirm').textContent = confirmText || 'Xác nhận';
+    document.getElementById('action-dialog-input-label').textContent = inputLabel || '';
+    document.getElementById('action-dialog-input-wrap').classList.toggle('hidden', !inputLabel);
+    document.getElementById('action-dialog-method-wrap').classList.toggle('hidden', !method);
+    input.value = String(value);
+    methodEl.value = method || 'cash';
+    error.classList.add('hidden');
+    dialog.classList.remove('hidden');
+    return new Promise((resolve) => {
+        const finish = (result) => {
+            dialog.classList.add('hidden');
+            form.onsubmit = null;
+            document.getElementById('action-dialog-cancel').onclick = null;
+            dialog.onkeydown = null;
+            resolve(result);
+        };
+        document.getElementById('action-dialog-cancel').onclick = () => finish(null);
+        dialog.onkeydown = (event) => {
+            if (event.key === 'Escape') {
+                event.stopPropagation();
+                finish(null);
+            }
+        };
+        form.onsubmit = (event) => {
+            event.preventDefault();
+            const text = input.value.trim();
+            const issue = validate?.(text);
+            if (issue) {
+                error.textContent = issue;
+                error.classList.remove('hidden');
+                input.setAttribute('aria-describedby', 'action-dialog-error');
+                input.focus();
+                return;
+            }
+            input.removeAttribute('aria-describedby');
+            finish({ value: text, method: methodEl.value });
+        };
+    });
+}
+
+async function askImportCancellation(imp) {
+    const paid = Number(imp.paid) || 0;
+    const debt = Math.max(0, (Number(imp.needPay) || 0) - paid);
+    const knownMethod = {
+        cash: 'cash',
+        'Tiền mặt': 'cash',
+        transfer: 'transfer',
+        bank: 'transfer',
+        'Chuyển khoản': 'transfer',
+        card: 'card',
+        Thẻ: 'card'
+    }[imp.paymentMethod];
+    const result = await askAction({
+        title: `Hủy phiếu nhập ${imp.code}`,
+        message: `Tồn kho, IMEI và giá vốn sẽ được đảo; công nợ nhà cung cấp giảm ${formatVND(debt)} đ.\nSố tiền cần nhận hoàn: ${formatVND(paid)} đ. Hệ thống sẽ kiểm tra chứng từ và số dư trước khi hủy.`,
+        confirmText: 'Xác nhận hủy phiếu',
+        inputLabel: 'Lý do hủy',
+        value: 'Nhập nhầm hàng',
+        method: paid > 0 ? knownMethod || 'cash' : null,
+        validate: (text) => (!text ? 'Vui lòng nhập lý do hủy.' : '')
+    });
+    if (!result) return null;
+    return { reason: result.value, ...(paid > 0 ? { refundMethod: result.method } : {}) };
+}
+
+async function cancelImport(code) {
+    const imp = (KVStore.data.imports || []).find((i) => i.code === code || i.id === code);
+    if (!imp) {
+        showToast('Không tìm thấy phiếu nhập!', 'error');
+        return;
+    }
+    if (imp.status === 'cancelled') {
+        showToast('Phiếu nhập này đã được hủy trước đó!', 'error');
+        return;
+    }
+    const result = await askImportCancellation(imp);
+    if (!result) return;
+    await KVStore.command('cancel_import', { importId: imp.code, ...result });
+    document.getElementById('import-detail-modal')?.classList.add('hidden');
+    renderAllViews();
+    showToast('Đã hủy phiếu nhập thành công!', 'success');
 }
 
 let currentImportItems = [];
@@ -5341,7 +5814,12 @@ async function deleteCustomer(code) {
     }
     const c = KVStore.data.customers.find((item) => item.code === code);
     if (!c) return;
-    if (!confirm(`Bạn có chắc chắn muốn xóa khách hàng ${c.name} (${c.code})?`)) return;
+    const confirmed = await askAction({
+        title: 'Xóa khách hàng',
+        message: `Xóa khách hàng ${c.name} (${c.code})? Thao tác này không thể hoàn tác.`,
+        confirmText: 'Xóa khách hàng'
+    });
+    if (!confirmed) return;
 
     KVStore.data.customers = KVStore.data.customers.filter((item) => item.code !== code);
     await KVStore.save();
@@ -5352,11 +5830,21 @@ async function deleteCustomer(code) {
 async function collectCustomerDebt(code) {
     const customer = KVStore.data.customers.find((c) => c.code === code);
     if (!customer) return;
-    const value = prompt(
-        `Thu nợ ${customer.name} (còn ${formatVND(customer.debt)} đ):`,
-        customer.debt
-    );
-    if (value === null) return;
+    const result = await askAction({
+        title: `Thu nợ ${customer.name}`,
+        message: `Công nợ hiện tại: ${formatVND(customer.debt)} đ.`,
+        confirmText: 'Lưu phiếu thu',
+        inputLabel: 'Số tiền thu',
+        value: formatVND(customer.debt),
+        method: 'cash',
+        validate: (text) => {
+            const amount = parseVND(text);
+            if (amount <= 0) return 'Số tiền thu phải lớn hơn 0.';
+            if (amount > customer.debt) return 'Số tiền thu không được vượt công nợ.';
+            return '';
+        }
+    });
+    if (!result) return;
     const curBr = getCurrentBranch();
     const effectiveBranch =
         curBr === ALL_BRANCHES
@@ -5368,9 +5856,9 @@ async function collectCustomerDebt(code) {
     await KVStore.command('debt', {
         type: 'thu',
         partnerId: customer.id,
-        amount: parseVND(value),
+        amount: parseVND(result.value),
         branch: effectiveBranch,
-        method: 'cash'
+        method: result.method
     });
     renderAllViews();
     showToast('Đã lưu thu nợ.', 'success');
@@ -5503,7 +5991,13 @@ function editSupplier(code) {
 }
 
 async function deleteSupplier(code) {
-    if (confirm(`Bạn có chắc chắn muốn xóa nhà cung cấp ${code}?`)) {
+    if (
+        await askAction({
+            title: 'Xóa nhà cung cấp',
+            message: `Xóa nhà cung cấp ${code}? Thao tác này không thể hoàn tác.`,
+            confirmText: 'Xóa nhà cung cấp'
+        })
+    ) {
         KVStore.data.suppliers = KVStore.data.suppliers.filter((s) => s.code !== code);
         await KVStore.save();
         renderSuppliers();
@@ -6870,9 +7364,11 @@ async function deleteStaff(staffId) {
     }
 
     if (
-        confirm(
-            `Bạn có chắc chắn muốn xóa nhân viên "${target.name}" (${target.username}) khỏi hệ thống?`
-        )
+        await askAction({
+            title: 'Xóa nhân viên',
+            message: `Xóa nhân viên "${target.name}" (${target.username}) khỏi hệ thống? Thao tác này không thể hoàn tác.`,
+            confirmText: 'Xóa nhân viên'
+        })
     ) {
         KVStore.data.users = users.filter((u) => u.id !== staffId);
         await KVStore.save();
@@ -6921,6 +7417,7 @@ checkoutPos = guardMutation(checkoutPos);
 cancelInvoice = guardMutation(cancelInvoice);
 submitReturnGoods = guardMutation(submitReturnGoods);
 saveNewImport = guardMutation(saveNewImport);
+cancelImport = guardMutation(cancelImport);
 collectCustomerDebt = guardMutation(collectCustomerDebt);
 saveNewReceipt = guardMutation(saveNewReceipt);
 saveNewPayment = guardMutation(saveNewPayment);

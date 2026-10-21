@@ -357,6 +357,116 @@ test('import rejects duplicate serial across warehouses and invalid amounts', ()
     assert.throws(() => sell({ discount: -1 }));
     assert.throws(() => sell({ given: Infinity }));
 });
+test('cancel_import reverses inventory, serials, supplier debt and issues cash receipt', () => {
+    const initialProduct = db
+        .getAllData()
+        .products.find((p) => p.code === 'SP' && p.branch === 'A');
+    const initialStock = initialProduct.stock;
+    const initialCostPrice = initialProduct.costPrice;
+    const initialSupplier = db.getAllData().suppliers.find((s) => s.code === 'S');
+    const initialDebt = initialSupplier.debt;
+    const initialBought = initialSupplier.totalBought;
+
+    // 1. Create an import
+    const imp = command('import', {
+        branch: 'A',
+        supplierCode: 'S',
+        items: [
+            {
+                code: 'SP',
+                qty: 2,
+                price: 50000,
+                hasImei: true,
+                imeis: ['NEW_IMEI_1', 'NEW_IMEI_2']
+            }
+        ],
+        paid: 60000,
+        paymentMethod: 'cash'
+    }).result;
+
+    assert.equal(
+        db.getAllData().products.find((p) => p.code === 'SP' && p.branch === 'A').stock,
+        initialStock + 2
+    );
+    assert.ok(
+        db
+            .getAllData()
+            .products.find((p) => p.code === 'SP' && p.branch === 'A')
+            .imeis.includes('NEW_IMEI_1')
+    );
+
+    // 2. Cancel the import
+    command('cancel_import', { importId: imp.id, reason: 'Nhập nhầm hàng' });
+
+    const after = db.getAllData();
+    const prodAfter = after.products.find((p) => p.code === 'SP' && p.branch === 'A');
+    assert.equal(prodAfter.stock, initialStock);
+    assert.equal(prodAfter.costPrice, initialCostPrice);
+    assert.ok(!prodAfter.imeis.includes('NEW_IMEI_1'));
+
+    const supAfter = after.suppliers.find((s) => s.code === 'S');
+    assert.equal(supAfter.debt, initialDebt);
+    assert.equal(supAfter.totalBought, initialBought);
+
+    const cancelledImp = after.imports.find((i) => i.id === imp.id);
+    assert.equal(cancelledImp.status, 'cancelled');
+    assert.equal(cancelledImp.cancelReason, 'Nhập nhầm hàng');
+
+    // Cashbook voucher type 'thu' created to return paid money
+    const refundVoucher = after.cashbook.find((c) => c.category === 'Hủy phiếu nhập');
+    assert.ok(refundVoucher);
+    assert.equal(refundVoucher.amount, 60000);
+    assert.equal(refundVoucher.type, 'thu');
+    assert.equal(refundVoucher.importId, imp.id);
+    assert.equal(refundVoucher.importCode, imp.code);
+
+    // 3. Cancelling again throws error
+    assert.throws(() => command('cancel_import', { importId: imp.id }), /Phiếu nhập đã hủy/);
+});
+test('cancel_import refuses imports whose stock, cost or supplier balance changed later', () => {
+    const importOne = (paymentMethod = 'cash') =>
+        command('import', {
+            branch: 'A',
+            supplierCode: 'S',
+            items: [{ code: 'SP', qty: 1, price: 80000, imeis: [crypto.randomUUID()] }],
+            paid: 20000,
+            paymentMethod
+        }).result;
+    const sold = importOne();
+    sell();
+    assert.throws(
+        () => command('cancel_import', { importId: sold.id }),
+        /Đã có chứng từ phát sinh sau phiếu nhập|Tồn kho hoặc giá vốn đã thay đổi/
+    );
+
+    const paidDebt = importOne('bank');
+    const data = db.getAllData();
+    data.suppliers.find((s) => s.code === 'S').debt = 0;
+    db.saveAllData(data);
+    assert.throws(
+        () => command('cancel_import', { importId: paidDebt.id }),
+        /Công nợ hoặc tổng nhập nhà cung cấp đã thay đổi/
+    );
+
+    const unknownMethod = db.getAllData();
+    const legacy = unknownMethod.imports.find((i) => i.id === paidDebt.id);
+    legacy.paymentMethod = 'legacy';
+    unknownMethod.suppliers.find((s) => s.code === 'S').debt = 1000000;
+    db.saveAllData(unknownMethod);
+    assert.throws(
+        () => command('cancel_import', { importId: paidDebt.id }),
+        /Phương thức thanh toán không hợp lệ/
+    );
+    const receipt = command('cancel_import', {
+        importId: paidDebt.id,
+        refundMethod: 'transfer'
+    }).result;
+    assert.equal(receipt.status, 'cancelled');
+    assert.equal(
+        db.getAllData().cashbook.find((c) => c.importId === paidDebt.id).method,
+        'Chuyển khoản'
+    );
+});
 test('generic edit cannot forge financial records or bypass table permissions', () => {
     const data = app.project(db.getAllData(), admin);
     data.invoices = [{ id: 'bad', items: 'not-json' }];
