@@ -76,6 +76,18 @@ npm run format:check
 
 Các thư viện npm chỉ phục vụ phát triển/kiểm thử. Bộ test dùng SQLite tạm và jsdom, nối frontend tới HTTP handler thật bằng request/response giả lập; không sử dụng `minikiot.db` hiện tại. Bao gồm phân quyền, chống mất/ghi trùng giao dịch, tồn kho/IMEI, hoàn tiền/công nợ, XSS, báo cáo, migration và phục hồi bản sao. Chưa thay thế kiểm thử trên trình duyệt thật, máy in, scanner, mobile và tải lớn.
 
+Nếu dự án nằm trên ổ mạng như SMB, việc nạp jsdom từ `node_modules` có thể quá chậm và làm test UI/integration như bị treo. Chạy kiểm thử trên bản sao ở ổ cục bộ:
+
+```bash
+verify_dir="$(mktemp -d /tmp/minikiot-verify.XXXXXX)"
+git ls-files -z | rsync -a --from0 --files-from=- ./ "$verify_dir"/
+cd "$verify_dir"
+npm ci --ignore-scripts
+npm run check
+npm test
+npm run format:check
+```
+
 Các module chính:
 
 - `server.js`, `security.js`: HTTP, session, mật khẩu và quyền.
