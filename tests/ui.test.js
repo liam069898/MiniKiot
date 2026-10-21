@@ -186,3 +186,224 @@ test('staff form starts without a default password and preserves separate user-m
     assert.equal(w.document.getElementById('perm-users').checked, true);
     dom.window.close();
 });
+
+test('10% UI scaling, Xoá button title, and item notes work in POS', () => {
+    const dom = browser(),
+        w = dom.window;
+    // 1. Verify 10% zoom in CSS
+    const styleContent = Array.from(w.document.querySelectorAll('style'))
+        .map((s) => s.textContent)
+        .join('\n');
+    assert.ok(styleContent.includes('zoom: 1.1'));
+
+    // 2. Add an item to POS cart and check render
+    w.eval(
+        "state.posTabs[0].cart = [{ code: 'SP001', name: 'Đồng hồ Garmin', price: 6000000, stock: 10, qty: 1, note: '' }];"
+    );
+    w.renderPosScreen();
+
+    // Check delete button title is 'Xoá'
+    const delBtn = w.document.querySelector('[onclick*="removePosItem"]');
+    assert.ok(delBtn);
+    assert.equal(delBtn.getAttribute('title'), 'Xoá');
+    assert.equal(delBtn.getAttribute('aria-label'), 'Xoá');
+
+    // Check note input exists
+    const noteInput = w.document.querySelector('input[data-note-code="SP001"]');
+    assert.ok(noteInput);
+    w.updatePosItemNote('SP001', 'Quà tặng kèm dock sạc');
+    assert.equal(w.eval('state.posTabs[0].cart[0].note'), 'Quà tặng kèm dock sạc');
+
+    // Check invoice table header is "Tên hàng hóa"
+    const tableHeader = w.document.querySelector('#invoice-detail-modal th:nth-child(3)');
+    assert.equal(tableHeader?.textContent?.trim(), 'Tên hàng hóa');
+
+    dom.window.close();
+});
+
+test('Vietnamese name and address normalization standardizes input to proper Title Case', () => {
+    const dom = browser(),
+        w = dom.window;
+    w.eval('KVStore.save = async () => {}');
+
+    assert.equal(w.normalizeTitleCase('nguyễn văn an'), 'Nguyễn Văn An');
+    assert.equal(w.normalizeTitleCase('  trần   thị   hoa  '), 'Trần Thị Hoa');
+    assert.equal(
+        w.normalizeTitleCase('103 võ văn tần, p.6, quận 3, tp.hcm'),
+        '103 Võ Văn Tần, P.6, Quận 3, TP.HCM'
+    );
+
+    // Customer save normalizes customer name and address
+    w.document.getElementById('cust-code').value = 'KH_TEST_01';
+    w.document.getElementById('cust-name').value = '  lê hoàng nam  ';
+    w.document.getElementById('cust-phone').value = '0988112233';
+    w.document.getElementById('cust-address').value = '12 nguyễn du, q.1, tp.hcm';
+    w.saveCustomerFromModal({ preventDefault() {} });
+
+    const saved = w.eval("KVStore.data.customers.find((c) => c.code === 'KH_TEST_01')");
+    assert.ok(saved);
+    assert.equal(saved.name, 'Lê Hoàng Nam');
+    assert.equal(saved.address, '12 Nguyễn Du, Q.1, TP.HCM');
+
+    dom.window.close();
+});
+
+test('Custom bill in configuration saves and updates receipt preview and print layout', async () => {
+    const dom = browser(),
+        w = dom.window;
+    w.eval('KVStore.save = async () => {}');
+
+    // Default bill config
+    const def = w.getBillConfig();
+    assert.equal(def.paperSize, 'k80');
+    assert.equal(def.title, 'HÓA ĐƠN BÁN HÀNG');
+    assert.equal(def.showNote, true);
+
+    // Open custom bill modal, set values and save
+    w.openBillCustomModal();
+    w.document.getElementById('bill-opt-paper-k58').checked = true;
+    w.document.getElementById('bill-custom-title').value = 'PHIẾU TÍNH TIỀN';
+    w.document.getElementById('bill-custom-footer').value = 'Hẹn gặp lại quý khách!';
+    w.onBillConfigChange();
+
+    await w.saveBillCustomConfig();
+
+    const updated = w.getBillConfig();
+    assert.equal(updated.paperSize, 'k58');
+    assert.equal(updated.title, 'PHIẾU TÍNH TIỀN');
+    assert.equal(updated.footer, 'Hẹn gặp lại quý khách!');
+
+    // Open receipt modal and check custom title, footer, item note and paper size
+    const testInv = {
+        code: 'HD000099',
+        time: '21/10/2026 10:00',
+        customer: 'Nguyễn Văn An',
+        cashier: 'Thu ngân 1',
+        items: [
+            {
+                code: 'SP01',
+                name: 'Sản phẩm mẫu',
+                qty: 2,
+                price: 50000,
+                note: 'Bảo hành 6 tháng'
+            }
+        ],
+        total: 100000,
+        paid: 100000
+    };
+    w.openReceiptModal(testInv);
+    assert.equal(w.document.getElementById('receipt-title').textContent, 'PHIẾU TÍNH TIỀN');
+    assert.equal(w.document.getElementById('receipt-footer').textContent, 'Hẹn gặp lại quý khách!');
+    assert.ok(
+        w.document.getElementById('receipt-items-tbody').textContent.includes('Bảo hành 6 tháng')
+    );
+    assert.equal(w.document.getElementById('printable-receipt').dataset.paper, 'k58');
+
+    // Test printReceipt uses paperSize k58
+    w.printReceipt();
+    const printRoot = w.document.getElementById('print-root');
+    assert.ok(printRoot);
+    assert.equal(printRoot.dataset.paper, 'k58');
+
+    dom.window.close();
+});
+
+test('SQL badge removed and toast popup slides down from top', async () => {
+    const dom = browser(),
+        w = dom.window;
+
+    // Check DB status badge is removed
+    const dbBadge = w.document.getElementById('db-status-badge');
+    assert.equal(dbBadge, null);
+
+    // Check toast container initial position and styling
+    const toast = w.document.getElementById('kv-toast');
+    assert.ok(toast);
+    assert.ok(toast.classList.contains('top-4'));
+    assert.ok(toast.classList.contains('left-1/2'));
+    assert.ok(toast.classList.contains('-translate-x-1/2'));
+    assert.ok(toast.classList.contains('-translate-y-24'));
+    assert.ok(toast.classList.contains('opacity-0'));
+
+    // Verify #kv-toast CSS rules exist in <style>
+    const styleContent = Array.from(w.document.querySelectorAll('style'))
+        .map((s) => s.textContent)
+        .join('\n');
+    assert.ok(styleContent.includes('#kv-toast {'));
+    assert.ok(styleContent.includes('left: 50% !important;'));
+    assert.ok(styleContent.includes('transform: translate(-50%, -150%) !important;'));
+    assert.ok(styleContent.includes('#kv-toast.translate-y-0 {'));
+    assert.ok(styleContent.includes('transform: translate(-50%, 0) !important;'));
+
+    // Trigger toast notification
+    w.showToast('Test thông báo', 'success');
+    assert.ok(toast.classList.contains('translate-y-0'));
+    assert.ok(toast.classList.contains('opacity-100'));
+    assert.ok(!toast.classList.contains('-translate-y-24'));
+    assert.equal(w.document.getElementById('kv-toast-msg').textContent, 'Test thông báo');
+
+    dom.window.close();
+});
+
+test('Admin can select and view Toàn bộ chi nhánh across views', async () => {
+    const dom = browser(),
+        w = dom.window;
+    w.eval('KVStore.save = async () => {}');
+
+    // Setup admin user
+    w.eval(
+        "KVStore.user = { id: 'u_admin', username: 'admin', role: 'admin', branches: ['Kalo HCM', 'Kalo Hà Nội'] }"
+    );
+
+    // Add branches and products in both branches
+    w.eval(`
+        KVStore.data.branches = [
+            { id: 'b1', name: 'Kalo HCM', isDefault: true },
+            { id: 'b2', name: 'Kalo Hà Nội' }
+        ];
+        KVStore.data.products = [
+            { id: 'p1', code: 'SP001', name: 'Áo thun HCM', branch: 'Kalo HCM', stock: 10, price: 100000, costPrice: 60000, status: 'active' },
+            { id: 'p2', code: 'SP002', name: 'Áo thun HN', branch: 'Kalo Hà Nội', stock: 5, price: 120000, costPrice: 70000, status: 'active' }
+        ];
+        KVStore.data.invoices = [
+            { id: 'inv1', code: 'HD000001', branch: 'Kalo HCM', total: 100000, paid: 100000, status: 'completed', time: '21/10/2026 09:00', items: [{ code: 'SP001', name: 'Áo thun HCM', qty: 1, price: 100000 }] },
+            { id: 'inv2', code: 'HD000002', branch: 'Kalo Hà Nội', total: 120000, paid: 120000, status: 'completed', time: '21/10/2026 10:00', items: [{ code: 'SP002', name: 'Áo thun HN', qty: 1, price: 120000 }] }
+        ];
+    `);
+
+    // Render branch selector as admin
+    w.renderBranchSelector();
+    const branchContainer = w.document.getElementById('branch-list-container');
+    assert.ok(branchContainer);
+    assert.ok(branchContainer.textContent.includes('Toàn bộ chi nhánh'));
+
+    // Admin selects Toàn bộ chi nhánh
+    await w.selectActiveBranch(w.ALL_BRANCHES);
+    assert.equal(w.getCurrentBranch(), w.ALL_BRANCHES);
+    assert.equal(w.document.getElementById('top-branch-name').textContent, w.ALL_BRANCHES);
+
+    // Products table displays products from both branches
+    w.renderProducts();
+    const prodTbody = w.document.getElementById('products-tbody');
+    assert.ok(prodTbody.textContent.includes('SP001'));
+    assert.ok(prodTbody.textContent.includes('SP002'));
+    assert.ok(prodTbody.textContent.includes('Kalo HCM'));
+    assert.ok(prodTbody.textContent.includes('Kalo Hà Nội'));
+
+    // Invoices table displays invoices from both branches
+    w.renderInvoices();
+    const invTbody = w.document.getElementById('invoice-tbody');
+    assert.ok(invTbody.textContent.includes('HD000001'));
+    assert.ok(invTbody.textContent.includes('HD000002'));
+
+    // Non-admin user cannot select Toàn bộ chi nhánh
+    w.eval(
+        "KVStore.user = { id: 'u_staff', username: 'staff1', role: 'staff', branches: ['Kalo HCM'] }"
+    );
+    w.renderBranchSelector();
+    assert.ok(!branchContainer.textContent.includes('Toàn bộ chi nhánh'));
+    await w.selectActiveBranch(w.ALL_BRANCHES);
+    assert.notEqual(w.getCurrentBranch(), w.ALL_BRANCHES);
+
+    dom.window.close();
+});

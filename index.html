@@ -7,11 +7,18 @@
     <link rel="stylesheet" href="/assets/inter.css">
     <link rel="stylesheet" href="/assets/tailwind.css">
     <style>
+        :root, html {
+            zoom: 1.1;
+        }
         html, body {
+            width: 100%;
             height: 100%;
             margin: 0;
             padding: 0;
             overflow: hidden;
+        }
+        .capitalize-input {
+            text-transform: capitalize;
         }
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -300,15 +307,37 @@
             color: #4b5563 !important;
         }
 
-        /* iOS Dynamic Island Toast */
+        /* iOS Dynamic Island Toast Notification (Top Center Slide Down & Auto Hide) */
         #kv-toast {
+            position: fixed !important;
+            top: 16px !important;
+            left: 50% !important;
+            transform: translate(-50%, -150%) !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
             border-radius: var(--ios-r-pill) !important;
-            padding: 8px 18px !important;
-            background: rgba(24, 24, 27, 0.88) !important;
+            padding: 8px 20px !important;
+            background: rgba(24, 24, 27, 0.92) !important;
             backdrop-filter: blur(24px) !important;
             -webkit-backdrop-filter: blur(24px) !important;
             border: 1px solid rgba(255, 255, 255, 0.22) !important;
-            box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.4), inset 0 1px 0.5px rgba(255, 255, 255, 0.35) !important;
+            box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.45), inset 0 1px 0.5px rgba(255, 255, 255, 0.35) !important;
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease-out !important;
+            z-index: 9999 !important;
+            max-width: 92vw !important;
+        }
+
+        #kv-toast.translate-y-0 {
+            transform: translate(-50%, 0) !important;
+            opacity: 1 !important;
+            pointer-events: auto !important;
+        }
+
+        #kv-toast.-translate-y-24,
+        #kv-toast.opacity-0 {
+            transform: translate(-50%, -150%) !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
         }
 
         /* iOS Table Inset List styling */
@@ -323,22 +352,24 @@
         
         #print-root { display: none; }
         @media print {
-            html, body { height: auto !important; overflow: visible !important; background: white !important; }
+            :root, html, body { zoom: 1 !important; height: auto !important; overflow: visible !important; background: white !important; }
             body > * { display: none !important; }
             body > #print-root { display: block !important; position: static; width: 100%; color: black; background: white; }
             #print-root[data-thermal="true"] { width: 80mm; }
+            #print-root[data-paper="k58"], #print-root[data-thermal="true"][data-paper="k58"] { width: 58mm !important; max-width: 58mm !important; font-size: 11px !important; }
+            #print-root[data-paper="k80"], #print-root[data-thermal="true"][data-paper="k80"] { width: 80mm !important; max-width: 80mm !important; font-size: 12px !important; }
             #print-root * { overflow: visible !important; max-height: none !important; box-shadow: none !important; }
             #print-root table { width: 100%; border-collapse: collapse; }
             #print-root tr { break-inside: avoid; }
         }
     </style>
 </head>
-<body class="h-screen w-screen overflow-hidden flex flex-col text-[13px]">
+<body class="h-full w-full overflow-hidden flex flex-col text-[13px]">
 
     <!-- ========================================== -->
     <!-- KHU VỰC QUẢN LÝ (MANAGEMENT LAYOUT)       -->
     <!-- ========================================== -->
-    <div id="management-layout" class="flex flex-col h-screen w-full overflow-hidden">
+    <div id="management-layout" class="flex flex-col h-full w-full overflow-hidden">
         
         <!-- 1. TOP BAR -->
         <header class="glass-header h-10 px-2.5 sm:px-4 flex items-center justify-between z-40 flex-shrink-0">
@@ -355,12 +386,6 @@
 
             <!-- Right Utilities -->
             <div class="flex items-center space-x-1.5 sm:space-x-3 text-[12.5px] text-gray-700">
-                <!-- SQLite DB Status Badge -->
-                <div id="db-status-badge" onclick="showDbInfoModal()" class="hidden sm:flex items-center space-x-1.5 px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 font-semibold text-[11px] border border-emerald-500/20 shadow-xs cursor-pointer transition" title="Đã kết nối SQLite Database (minikiot.db)">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>SQLite DB</span>
-                </div>
-                <div class="hidden sm:block h-3.5 w-[1px] bg-gray-300/60"></div>
                 <!-- Branch Selector & Management -->
                 <div class="relative" id="branch-dropdown-wrapper">
                     <button id="top-branch-btn" onclick="toggleBranchDropdown(event)" class="flex items-center space-x-1 sm:space-x-1.5 px-2 sm:px-2.5 py-1 rounded-xl bg-gray-100/90 hover:bg-gray-200/90 transition text-gray-800 font-semibold text-[12px] sm:text-[12.5px] border border-gray-200/70 shadow-xs">
@@ -1457,18 +1482,39 @@
 
     <!-- 1. RECEIPT PRINT MODAL -->
     <div id="receipt-modal" class="kv-modal hidden fixed inset-0 bg-black/40 backdrop-blur-md z-[150] flex items-center justify-center p-4">
-        <div class="bg-white/95 backdrop-blur-2xl rounded-2xl shadow-2xl max-w-sm w-full p-5 flex flex-col max-h-[90vh] border border-white/80">
+        <div class="bg-white/95 backdrop-blur-2xl rounded-2xl shadow-2xl max-w-sm w-full p-5 flex flex-col max-h-[92vh] border border-white/80">
+            <!-- Modal Header Toolbar -->
+            <div class="flex items-center justify-between pb-2.5 mb-2 border-b border-gray-100/90 text-xs text-gray-500">
+                <div class="flex items-center space-x-1 font-semibold text-gray-700">
+                    <span>🖨️ Xem trước hóa đơn</span>
+                </div>
+                <div class="flex items-center space-x-1.5">
+                    <!-- Quick paper size buttons -->
+                    <div class="inline-flex rounded-lg border border-gray-200/90 p-0.5 bg-gray-50/80 text-[11px]">
+                        <button type="button" onclick="setReceiptPaperPreview('k80')" id="receipt-btn-k80" class="px-2 py-0.5 rounded font-bold transition bg-white text-[#0066cc] shadow-2xs">K80</button>
+                        <button type="button" onclick="setReceiptPaperPreview('k58')" id="receipt-btn-k58" class="px-2 py-0.5 rounded font-medium text-gray-600 transition hover:text-gray-900">K58</button>
+                    </div>
+                    <button type="button" onclick="openBillCustomModal()" class="px-2 py-1 rounded-lg bg-gray-100/80 hover:bg-gray-200/80 text-gray-700 font-medium text-[11px] transition flex items-center space-x-1" title="Tùy biến mẫu in hóa đơn">
+                        <span>⚙️ Mẫu in</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Receipt Content (Printable) -->
             <div id="printable-receipt" class="overflow-y-auto flex-1 text-center font-mono text-[12px] text-gray-800 p-2">
+                <div id="receipt-logo-wrap" class="mb-2 hidden flex justify-center">
+                    <img id="receipt-logo-img" class="max-h-12 max-w-[180px] object-contain mx-auto" alt="Logo" />
+                </div>
                 <div id="receipt-store-name" class="font-bold text-[15px] uppercase">Kalo HCM</div>
                 <div id="receipt-address" class="text-[11px] text-gray-600">103 Võ Văn Tần, Q.3, TP.HCM</div>
                 <div id="receipt-phone" class="text-[11px] text-gray-600 mb-2">Hotline: 1900 6522</div>
                 <div class="border-b border-dashed border-gray-400 my-2"></div>
-                <div class="font-bold text-[14px] uppercase mb-1">HÓA ĐƠN BÁN HÀNG</div>
+                <div id="receipt-title" class="font-bold text-[14px] uppercase mb-1">HÓA ĐƠN BÁN HÀNG</div>
                 <div class="text-[11px] text-left">
-                    <div>Số HĐ: <span id="receipt-code" class="font-bold"></span></div>
-                    <div>Ngày: <span id="receipt-time"></span></div>
-                    <div>Khách hàng: <span id="receipt-customer"></span></div>
-                    <div>Thu ngân: <span id="receipt-cashier"></span></div>
+                    <div id="receipt-row-code">Số HĐ: <span id="receipt-code" class="font-bold"></span></div>
+                    <div id="receipt-row-time">Ngày: <span id="receipt-time"></span></div>
+                    <div id="receipt-row-customer">Khách hàng: <span id="receipt-customer"></span></div>
+                    <div id="receipt-row-cashier">Thu ngân: <span id="receipt-cashier"></span></div>
                 </div>
                 <div class="border-b border-dashed border-gray-400 my-2"></div>
                 <table class="w-full text-left">
@@ -1485,18 +1531,118 @@
                 <div class="border-b border-dashed border-gray-400 my-2"></div>
                 <div class="space-y-1 text-right font-medium">
                     <div class="flex justify-between"><span>Tổng tiền:</span><span id="receipt-total" class="font-bold"></span></div>
-                    <div class="flex justify-between"><span>Giảm giá:</span><span id="receipt-discount"></span></div>
+                    <div id="receipt-row-discount" class="flex justify-between"><span>Giảm giá:</span><span id="receipt-discount"></span></div>
                     <div class="flex justify-between text-[13px] font-bold"><span>Khách đã trả:</span><span id="receipt-paid" class="text-[#0066cc]"></span></div>
+                    <div id="receipt-row-change" class="flex justify-between text-[12px] text-gray-600 hidden"><span>Tiền thừa:</span><span id="receipt-change"></span></div>
+                </div>
+                <div id="receipt-qr-wrap" class="hidden mt-2 pt-2 border-t border-dashed border-gray-300 flex flex-col items-center">
+                    <div class="text-[10px] text-gray-500 font-sans mb-1">Quét mã VietQR chuyển khoản:</div>
+                    <img id="receipt-qr-img" class="w-28 h-28 object-contain mx-auto" alt="VietQR" />
                 </div>
                 <div class="border-b border-dashed border-gray-400 my-3"></div>
-                <div class="text-[11px] text-gray-500 italic">Cảm ơn Quý khách & Hẹn gặp lại!</div>
+                <div id="receipt-footer" class="text-[11px] text-gray-500 italic">Cảm ơn Quý khách & Hẹn gặp lại!</div>
             </div>
+
+            <!-- Receipt Action Buttons -->
             <div class="flex space-x-2 pt-3 border-t border-gray-100/80 mt-2">
                 <button onclick="printReceipt()" class="glass-btn-primary flex-1 text-white py-2 rounded-xl font-bold text-[13px] shadow-xs flex items-center justify-center space-x-1.5">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                     <span>In ngay</span>
                 </button>
                 <button onclick="closeReceiptModal()" class="glass-btn-secondary px-4.5 py-2 text-gray-700 rounded-xl font-medium text-[13px] hover:text-gray-900 transition shadow-xs">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1B. BILL CUSTOMIZATION MODAL (CUSTOM BILL IN) -->
+    <div id="bill-custom-modal" class="kv-modal hidden fixed inset-0 bg-black/40 backdrop-blur-md z-[160] flex items-center justify-center p-4">
+        <div class="bg-white/95 backdrop-blur-2xl rounded-2xl shadow-2xl max-w-lg w-full p-5 sm:p-6 border border-white/80 max-h-[92vh] flex flex-col">
+            <div class="flex justify-between items-center mb-3 pb-2.5 border-b border-gray-100">
+                <div class="flex items-center space-x-2">
+                    <span class="text-xl">🖨️</span>
+                    <h3 class="font-bold text-[16px] text-gray-900">Tùy biến mẫu in hóa đơn</h3>
+                </div>
+                <button type="button" onclick="closeBillCustomModal()" class="w-8 h-8 rounded-full bg-gray-100/80 hover:bg-gray-200 text-gray-500 hover:text-gray-800 flex items-center justify-center font-bold text-sm transition">✕</button>
+            </div>
+            
+            <div class="overflow-y-auto flex-1 space-y-4 pr-1 text-[13px]">
+                <!-- Paper Size -->
+                <div>
+                    <label class="block font-semibold text-gray-700 mb-1.5">Khổ giấy in hóa đơn</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="cursor-pointer border rounded-xl p-3 flex items-center space-x-2.5 transition border-gray-200 hover:border-[#0066cc]" id="bill-opt-paper-k80-card">
+                            <input type="radio" name="bill-paper-size" value="k80" id="bill-opt-paper-k80" onchange="onBillConfigChange()" class="text-[#0066cc] focus:ring-0">
+                            <div>
+                                <div class="font-bold text-gray-900">Khổ K80 (80mm)</div>
+                                <div class="text-[11px] text-gray-500">Chuẩn máy in bill nhiệt phổ biến</div>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer border rounded-xl p-3 flex items-center space-x-2.5 transition border-gray-200 hover:border-[#0066cc]" id="bill-opt-paper-k58-card">
+                            <input type="radio" name="bill-paper-size" value="k58" id="bill-opt-paper-k58" onchange="onBillConfigChange()" class="text-[#0066cc] focus:ring-0">
+                            <div>
+                                <div class="font-bold text-gray-900">Khổ K58 (58mm)</div>
+                                <div class="text-[11px] text-gray-500">Máy in bill mini / POS cầm tay</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Bill Title -->
+                <div>
+                    <label class="block font-semibold text-gray-700 mb-1">Tiêu đề hóa đơn</label>
+                    <input type="text" id="bill-custom-title" oninput="onBillConfigChange()" placeholder="Ví dụ: HÓA ĐƠN BÁN HÀNG, PHIẾU THANH TOÁN..." class="w-full border border-gray-200/85 rounded-xl px-3 py-2 font-bold uppercase focus:border-[#0066cc] focus:outline-none">
+                </div>
+
+                <!-- Checkbox toggles -->
+                <div>
+                    <label class="block font-semibold text-gray-700 mb-1.5">Tùy chọn hiển thị trên hóa đơn</label>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-gray-50/70 p-3 rounded-xl border border-gray-200/70">
+                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
+                            <input type="checkbox" id="bill-custom-show-logo" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                            <span>In Logo cửa hàng</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
+                            <input type="checkbox" id="bill-custom-show-store" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                            <span>In thông tin shop (Tên, ĐT, Địa chỉ)</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
+                            <input type="checkbox" id="bill-custom-show-customer" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                            <span>In thông tin khách hàng</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
+                            <input type="checkbox" id="bill-custom-show-cashier" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                            <span>In tên thu ngân</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
+                            <input type="checkbox" id="bill-custom-show-note" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                            <span>In ghi chú dưới từng món hàng</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
+                            <input type="checkbox" id="bill-custom-show-imei" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                            <span>In số IMEI / Serial</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
+                            <input type="checkbox" id="bill-custom-show-qr" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                            <span>In mã QR thanh toán VietQR</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Footer message -->
+                <div>
+                    <label class="block font-semibold text-gray-700 mb-1">Lời cảm ơn & Ghi chú chân trang</label>
+                    <textarea id="bill-custom-footer" oninput="onBillConfigChange()" rows="2" placeholder="Ví dụ: Cảm ơn Quý khách & Hẹn gặp lại! Quý khách vui lòng kiểm tra hàng trước khi rời quầy..." class="w-full border border-gray-200/85 rounded-xl px-3 py-2 text-[12.5px] focus:border-[#0066cc] focus:outline-none"></textarea>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center pt-3 border-t border-gray-100/80 mt-2">
+                <button type="button" onclick="resetBillCustomConfig()" class="text-rose-600 hover:text-rose-800 text-[12px] font-medium transition">
+                    ↺ Khôi phục mặc định
+                </button>
+                <div class="flex space-x-2">
+                    <button type="button" onclick="closeBillCustomModal()" class="glass-btn-secondary px-4 py-2 text-gray-700 rounded-xl font-medium text-[13px] hover:text-gray-900 transition shadow-xs">Hủy</button>
+                    <button type="button" onclick="saveBillCustomConfig()" class="glass-btn-primary px-5 py-2 text-white rounded-xl font-bold text-[13px] transition shadow-xs">Lưu mẫu in</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1726,11 +1872,11 @@
                 </div>
                 <div>
                     <label class="block font-medium text-gray-700 mb-1">Tên Nhà cung cấp (*)</label>
-                    <input id="sup-name" type="text" required placeholder="Tên công ty hoặc cá nhân NCC" class="w-full border border-gray-200/85 rounded-xl px-3 py-2 focus:border-[#0066cc] focus:outline-none">
+                    <input id="sup-name" type="text" required placeholder="Tên công ty hoặc cá nhân NCC" class="w-full border border-gray-200/85 rounded-xl px-3 py-2 capitalize-input focus:border-[#0066cc] focus:outline-none">
                 </div>
                 <div>
                     <label class="block font-medium text-gray-700 mb-1">Địa chỉ</label>
-                    <input id="sup-address" type="text" placeholder="Địa chỉ nhà cung cấp" class="w-full border border-gray-200/85 rounded-xl px-3 py-2 focus:border-[#0066cc] focus:outline-none">
+                    <input id="sup-address" type="text" placeholder="Địa chỉ nhà cung cấp" class="w-full border border-gray-200/85 rounded-xl px-3 py-2 capitalize-input focus:border-[#0066cc] focus:outline-none">
                 </div>
                 <div>
                     <label class="block font-medium text-gray-700 mb-1">Nợ cần trả ban đầu (nếu có)</label>
@@ -1768,11 +1914,11 @@
                 </div>
                 <div>
                     <label class="block font-medium text-gray-700 mb-1">Tên khách hàng (*)</label>
-                    <input id="cust-name" type="text" required placeholder="Họ và tên khách hàng" class="w-full border border-gray-200/85 rounded-xl px-3 py-2 focus:border-[#0066cc] focus:outline-none">
+                    <input id="cust-name" type="text" required placeholder="Họ và tên khách hàng" class="w-full border border-gray-200/85 rounded-xl px-3 py-2 capitalize-input focus:border-[#0066cc] focus:outline-none">
                 </div>
                 <div>
                     <label class="block font-medium text-gray-700 mb-1">Địa chỉ</label>
-                    <input id="cust-address" type="text" placeholder="Địa chỉ nơi ở, giao hàng..." class="w-full border border-gray-200/85 rounded-xl px-3 py-2 focus:border-[#0066cc] focus:outline-none">
+                    <input id="cust-address" type="text" placeholder="Địa chỉ nơi ở, giao hàng..." class="w-full border border-gray-200/85 rounded-xl px-3 py-2 capitalize-input focus:border-[#0066cc] focus:outline-none">
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
@@ -1917,7 +2063,7 @@
                         <tr class="bg-gray-50 border-b border-gray-200/70 font-semibold text-gray-700">
                             <th class="py-2 px-3">STT</th>
                             <th class="py-2 px-3">Mã SKU</th>
-                            <th class="py-2 px-3">Tên món</th>
+                            <th class="py-2 px-3">Tên hàng hóa</th>
                             <th class="py-2 px-3 text-center">SL</th>
                             <th class="py-2 px-3 text-right">Đơn giá</th>
                             <th class="py-2 px-3 text-right">Thành tiền</th>
@@ -2110,7 +2256,7 @@
 
                 <div>
                     <label class="block font-medium text-gray-700 mb-1">Tên cửa hàng</label>
-                    <input id="set-store-name" type="text" class="w-full border border-gray-200/85 rounded-xl px-3 py-2 focus:outline-none">
+                    <input id="set-store-name" type="text" class="w-full border border-gray-200/85 rounded-xl px-3 py-2 capitalize-input focus:outline-none">
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
@@ -2134,7 +2280,7 @@
                 </div>
                 <div>
                     <label class="block font-medium text-gray-700 mb-1">Địa chỉ</label>
-                    <input id="set-address" type="text" class="w-full border border-gray-200/85 rounded-xl px-3 py-2 focus:outline-none">
+                    <input id="set-address" type="text" class="w-full border border-gray-200/85 rounded-xl px-3 py-2 capitalize-input focus:outline-none">
                 </div>
                 <div class="p-3.5 bg-blue-50/70 border border-blue-200/70 rounded-xl space-y-2">
                     <div class="font-bold text-[#0066cc] mb-1 text-[13.5px]">Tài khoản ngân hàng nhận VietQR Napas 24/7</div>
@@ -2162,6 +2308,9 @@
                 <div class="flex items-center justify-between pt-2.5 border-t border-gray-100/80">
                     <button type="button" onclick="KVStore.exportJSON()" class="text-[#0066cc] hover:underline font-medium text-[12.5px] flex items-center space-x-1">
                         <span>💾 Sao lưu (Tải file JSON)</span>
+                    </button>
+                    <button type="button" onclick="openBillCustomModal()" class="text-[#0066cc] hover:underline font-medium text-[12.5px] flex items-center space-x-1">
+                        <span>🖨️ Tùy biến mẫu in hóa đơn</span>
                     </button>
                 </div>
                 <div class="flex justify-end space-x-2.5 pt-3">
@@ -2910,7 +3059,7 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label class="block font-bold text-gray-700 mb-1">Họ và tên (*)</label>
-                        <input id="staff-input-name" type="text" placeholder="Ví dụ: Nguyễn Văn A..." required class="w-full border border-gray-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-[#0066cc]">
+                        <input id="staff-input-name" type="text" placeholder="Ví dụ: Nguyễn Văn A..." required class="w-full border border-gray-200 rounded-xl px-3 py-2 font-medium capitalize-input focus:outline-none focus:border-[#0066cc]">
                     </div>
                     <div>
                         <label class="block font-bold text-gray-700 mb-1">Số điện thoại (*)</label>
@@ -3065,10 +3214,10 @@
         </div>
     </div>
 
-    <!-- Custom Toast Notification -->
-    <div id="kv-toast" class="fixed top-14 right-4 bg-gray-900/85 backdrop-blur-xl text-white px-4 py-2.5 rounded-2xl shadow-2xl text-[13px] font-medium border border-white/20 transform translate-x-[150%] transition-transform duration-300 z-[200] flex items-center space-x-2.5">
-        <span id="kv-toast-icon" class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50"></span>
-        <span id="kv-toast-msg">Thông báo</span>
+    <!-- Custom Toast Notification (Slide down from top) -->
+    <div id="kv-toast" class="fixed top-4 left-1/2 -translate-x-1/2 -translate-y-24 opacity-0 pointer-events-none bg-gray-900/90 backdrop-blur-2xl text-white px-5 py-2 rounded-full shadow-2xl text-[13px] font-semibold border border-white/25 transform transition-all duration-300 ease-out z-[300] flex items-center space-x-2.5 max-w-[92vw]">
+        <span id="kv-toast-icon" class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50 flex-shrink-0"></span>
+        <span id="kv-toast-msg" class="truncate">Thông báo</span>
     </div>
 
     <!-- Load App Scripts -->

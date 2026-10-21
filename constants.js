@@ -56,5 +56,16 @@ function generateCode(data, prefix = 'TX') {
     }
     return candidate;
 }
+const ALL_BRANCHES = 'Toàn bộ chi nhánh';
+if (typeof window !== 'undefined') {
+    window.ALL_BRANCHES = ALL_BRANCHES;
+}
+
 if (typeof module !== 'undefined')
-    module.exports = { FALLBACK_BRANCH, RETAIL_CUSTOMER_CODE, CODE_PREFIXES, generateCode };
+    module.exports = {
+        FALLBACK_BRANCH,
+        ALL_BRANCHES,
+        RETAIL_CUSTOMER_CODE,
+        CODE_PREFIXES,
+        generateCode
+    };

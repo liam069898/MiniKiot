@@ -99,8 +99,13 @@ let activeBarcodeProduct = null;
 
 function openBarcodeModal(productCode) {
     const currentBranch = getCurrentBranch();
+    const isAll =
+        currentBranch ===
+        (typeof ALL_BRANCHES !== 'undefined' ? ALL_BRANCHES : 'Toàn bộ chi nhánh');
     const p = (KVStore.data.products || []).find(
-        (item) => item.code === productCode && (item.branch || FALLBACK_BRANCH) === currentBranch
+        (item) =>
+            item.code === productCode &&
+            (isAll || (item.branch || FALLBACK_BRANCH) === currentBranch)
     );
     if (!p) {
         showToast('Không tìm thấy sản phẩm', 'error');
@@ -183,12 +188,16 @@ function printBarcodeStickers() {
 // --- 11. EXPORT TO CSV / EXCEL ---
 function exportTableToCSV(type) {
     const currentBranch = getCurrentBranch();
+    const isAll =
+        currentBranch ===
+        (typeof ALL_BRANCHES !== 'undefined' ? ALL_BRANCHES : 'Toàn bộ chi nhánh');
+    const branchTag = isAll ? 'Toan_bo_chi_nhanh' : currentBranch.replace(/\s+/g, '_');
     let filename = `kiotviet_${type}_${new Date().toISOString().slice(0, 10)}.csv`;
     let headers = [];
     let rows = [];
 
     if (type === 'products') {
-        filename = `Danh_muc_hang_hoa_${currentBranch.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+        filename = `Danh_muc_hang_hoa_${branchTag}_${new Date().toISOString().slice(0, 10)}.csv`;
         headers = [
             'Mã hàng',
             'Tên hàng hóa',
@@ -202,7 +211,7 @@ function exportTableToCSV(type) {
             'Chi nhánh'
         ];
         rows = (KVStore.data.products || [])
-            .filter((p) => (p.branch || FALLBACK_BRANCH) === currentBranch)
+            .filter((p) => isAll || (p.branch || FALLBACK_BRANCH) === currentBranch)
             .map((p) => [
                 p.code,
                 `"${(p.name || '').replace(/"/g, '""')}"`,
@@ -216,7 +225,7 @@ function exportTableToCSV(type) {
                 `"${p.branch || currentBranch}"`
             ]);
     } else if (type === 'invoices') {
-        filename = `Danh_sach_hoa_don_${currentBranch.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+        filename = `Danh_sach_hoa_don_${branchTag}_${new Date().toISOString().slice(0, 10)}.csv`;
         headers = [
             'Mã hóa đơn',
             'Thời gian',
@@ -230,7 +239,7 @@ function exportTableToCSV(type) {
             'Chi nhánh'
         ];
         rows = (KVStore.data.invoices || [])
-            .filter((i) => (i.branch || FALLBACK_BRANCH) === currentBranch)
+            .filter((i) => isAll || (i.branch || FALLBACK_BRANCH) === currentBranch)
             .map((i) => [
                 i.code,
                 `"${i.time || ''}"`,
@@ -244,7 +253,7 @@ function exportTableToCSV(type) {
                 `"${i.branch || ''}"`
             ]);
     } else if (type === 'imports') {
-        filename = `Danh_sach_nhap_hang_${currentBranch.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+        filename = `Danh_sach_nhap_hang_${branchTag}_${new Date().toISOString().slice(0, 10)}.csv`;
         headers = [
             'Mã phiếu',
             'Thời gian',
@@ -257,7 +266,7 @@ function exportTableToCSV(type) {
             'Ghi chú'
         ];
         rows = (KVStore.data.imports || [])
-            .filter((imp) => (imp.branch || FALLBACK_BRANCH) === currentBranch)
+            .filter((imp) => isAll || (imp.branch || FALLBACK_BRANCH) === currentBranch)
             .map((imp) => [
                 imp.code,
                 `"${imp.time || ''}"`,
@@ -308,11 +317,11 @@ function exportTableToCSV(type) {
             s.debt || 0
         ]);
     } else if (type === 'cashbook') {
-        filename = `So_quy_tai_chinh_${currentBranch.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+        filename = `So_quy_${branchTag}_${new Date().toISOString().slice(0, 10)}.csv`;
         headers = [
             'Mã phiếu',
             'Thời gian',
-            'Loại thu/chi',
+            'Loại phiếu',
             'Hạng mục',
             'Người nộp/nhận',
             'Hình thức',
@@ -321,7 +330,7 @@ function exportTableToCSV(type) {
             'Ghi chú'
         ];
         rows = (KVStore.data.cashbook || [])
-            .filter((tx) => (tx.branch || FALLBACK_BRANCH) === currentBranch)
+            .filter((tx) => isAll || (tx.branch || FALLBACK_BRANCH) === currentBranch)
             .map((tx) => [
                 tx.code,
                 `"${tx.time || ''}"`,
@@ -334,7 +343,7 @@ function exportTableToCSV(type) {
                 `"${(tx.note || '').replace(/"/g, '""')}"`
             ]);
     } else if (type === 'stocktakes') {
-        filename = `Phieu_kiem_kho_${currentBranch.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+        filename = `Phieu_kiem_kho_${branchTag}_${new Date().toISOString().slice(0, 10)}.csv`;
         headers = [
             'Mã phiếu kiểm',
             'Thời gian',
@@ -346,7 +355,7 @@ function exportTableToCSV(type) {
             'Ghi chú'
         ];
         rows = (KVStore.data.stocktakes || [])
-            .filter((st) => (st.branch || FALLBACK_BRANCH) === currentBranch)
+            .filter((st) => isAll || (st.branch || FALLBACK_BRANCH) === currentBranch)
             .map((st) => [
                 st.code,
                 `"${st.time || ''}"`,
@@ -358,7 +367,7 @@ function exportTableToCSV(type) {
                 `"${(st.note || '').replace(/"/g, '""')}"`
             ]);
     } else if (type === 'transfers') {
-        filename = `Phieu_chuyen_hang_${currentBranch.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+        filename = `Phieu_chuyen_hang_${branchTag}_${new Date().toISOString().slice(0, 10)}.csv`;
         headers = [
             'Mã chuyển hàng',
             'Thời gian',
@@ -371,7 +380,9 @@ function exportTableToCSV(type) {
             'Ghi chú'
         ];
         rows = (KVStore.data.transfers || [])
-            .filter((tf) => tf.fromBranch === currentBranch || tf.toBranch === currentBranch)
+            .filter(
+                (tf) => isAll || tf.fromBranch === currentBranch || tf.toBranch === currentBranch
+            )
             .map((tf) => [
                 tf.code,
                 `"${tf.time || ''}"`,

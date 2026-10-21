@@ -18,11 +18,81 @@ let state = {
     selectedInvoice: null,
     selectedImport: null,
     selectedCustomer: null,
-    posShowCatalog: false
+    posShowCatalog: false,
+    currentReceiptInvoice: null
 };
+
+// Helper: Normalize name & address to standard Vietnamese Title Case
+function normalizeTitleCase(str) {
+    if (!str || typeof str !== 'string') return '';
+    const cleaned = str.trim().replace(/\s+/g, ' ');
+    if (!cleaned) return '';
+    const UPPER_ABBRS = new Set(['tp', 'tphcm', 'hcm', 'hn', 'vn']);
+
+    return cleaned
+        .split(' ')
+        .map((word) => {
+            if (!word) return '';
+            return word
+                .split('/')
+                .map((part) => {
+                    if (!part) return '';
+                    const punctMatch = part.match(/^([\s\S]*?)([,;.]*)$/);
+                    const core = punctMatch ? punctMatch[1] : part;
+                    const trailingPunct = punctMatch ? punctMatch[2] : '';
+                    if (!core) return trailingPunct;
+
+                    const coreLower = core.toLowerCase();
+                    const corePlain = coreLower.replace(/\./g, '');
+                    if (UPPER_ABBRS.has(corePlain) || coreLower === 'tp.hcm') {
+                        return core.toUpperCase() + trailingPunct;
+                    }
+                    if (/^(q|p)\.?\d+[a-z]?$/i.test(core)) {
+                        return core.toUpperCase() + trailingPunct;
+                    }
+                    return (
+                        core.charAt(0).toLocaleUpperCase('vi-VN') +
+                        core.slice(1).toLocaleLowerCase('vi-VN') +
+                        trailingPunct
+                    );
+                })
+                .join('/');
+        })
+        .join(' ');
+}
+
+function setupCapitalizeInputs() {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('focusout', (e) => {
+        const target = e.target;
+        if (
+            !target ||
+            target.tagName !== 'INPUT' ||
+            (target.type !== 'text' && target.type !== 'search')
+        )
+            return;
+        if (
+            target.classList?.contains('capitalize-input') ||
+            [
+                'cust-name',
+                'cust-address',
+                'sup-name',
+                'sup-address',
+                'staff-input-name',
+                'set-store-name',
+                'set-address'
+            ].includes(target.id)
+        ) {
+            if (target.value) {
+                target.value = normalizeTitleCase(target.value);
+            }
+        }
+    });
+}
 
 // --- INITIALIZATION ---
 async function initApp() {
+    setupCapitalizeInputs();
     setupNavigation();
     setupKeyboardShortcuts();
     try {
@@ -305,6 +375,7 @@ function getCurrentBranch() {
         }
         return allowed[0] || FALLBACK_BRANCH;
     }
+    if (activeSetting === ALL_BRANCHES) return ALL_BRANCHES;
     return activeSetting || FALLBACK_BRANCH;
 }
 
@@ -362,7 +433,27 @@ function renderBranchSelector() {
         branches = branches.filter((b) => allowed.includes(b.name));
     }
 
-    container.innerHTML = branches
+    const isAllCurrent = currentBranch === ALL_BRANCHES;
+    const allBranchesOptionHtml = isAdmin
+        ? renderHTML`
+        <div class="group flex items-center justify-between p-1 rounded-xl text-[12.5px] transition ${isAllCurrent ? 'bg-blue-50/90 text-[#0066cc] font-semibold' : 'hover:bg-gray-100/80 text-gray-700 font-medium'}">
+            <button type="button" data-branch="${ALL_BRANCHES}" class="flex-1 min-w-0 text-left flex flex-col px-2 py-1 cursor-pointer">
+                <span class="flex items-center space-x-1.5">
+                    <span class="flex-shrink-0">🏢</span>
+                    <span class="truncate font-semibold ${isAllCurrent ? 'text-[#0066cc]' : 'text-gray-800'}">${ALL_BRANCHES}</span>
+                    ${trustedHTML(isAllCurrent ? '<span class="text-[9.5px] text-blue-700 bg-blue-100/90 px-1.5 py-0.2 rounded font-semibold flex-shrink-0">Hiện tại</span>' : '<span class="text-[9.5px] text-purple-700 bg-purple-100/90 px-1.5 py-0.2 rounded font-semibold flex-shrink-0">Toàn bộ</span>')}
+                </span>
+                <span class="text-[11px] text-gray-400 font-normal pl-5 truncate">Tổng hợp dữ liệu tất cả chi nhánh</span>
+            </button>
+            <div class="flex items-center space-x-1 flex-shrink-0 pr-1">
+                ${trustedHTML(isAllCurrent ? '<svg class="w-4 h-4 text-[#0066cc] flex-shrink-0 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>' : '')}
+            </div>
+        </div>
+        <div class="border-t border-gray-100/80 my-1"></div>
+        `
+        : '';
+
+    const branchItemsHtml = branches
         .map((b) => {
             const isCurrent = b.name === currentBranch;
             const branchIdOrCode = b.id || b.code || b.name;
@@ -372,9 +463,9 @@ function renderBranchSelector() {
                     <span class="flex items-center space-x-1.5">
                         <span class="flex-shrink-0">🏢</span>
                         <span class="truncate font-semibold ${isCurrent ? 'text-[#0066cc]' : 'text-gray-800'}">${b.name}</span>
-                        ${trustedHTML(isCurrent ? trustedHTML('<span class="text-[9.5px] text-blue-700 bg-blue-100/90 px-1.5 py-0.2 rounded font-semibold flex-shrink-0">Hiện tại</span>') : '')}
-                        ${trustedHTML(b.isDefault ? trustedHTML('<span class="text-[9.5px] text-emerald-700 bg-emerald-100/90 px-1.5 py-0.2 rounded font-semibold flex-shrink-0">Mặc định</span>') : '')}
-                        ${trustedHTML(isSingleBranchLocked ? trustedHTML('<span class="text-[9.5px] text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded font-semibold ml-0.5 flex-shrink-0">Cố định</span>') : '')}
+                        ${trustedHTML(isCurrent ? '<span class="text-[9.5px] text-blue-700 bg-blue-100/90 px-1.5 py-0.2 rounded font-semibold flex-shrink-0">Hiện tại</span>' : '')}
+                        ${trustedHTML(b.isDefault ? '<span class="text-[9.5px] text-emerald-700 bg-emerald-100/90 px-1.5 py-0.2 rounded font-semibold flex-shrink-0">Mặc định</span>' : '')}
+                        ${trustedHTML(isSingleBranchLocked ? '<span class="text-[9.5px] text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded font-semibold ml-0.5 flex-shrink-0">Cố định</span>' : '')}
                     </span>
                     <span class="text-[11px] text-gray-400 font-normal pl-5 truncate">${b.address || b.phone || (b.code ? 'Mã: ' + b.code : '')}</span>
                 </button>
@@ -388,12 +479,14 @@ function renderBranchSelector() {
                     `
                             : ''
                     )}
-                    ${trustedHTML(isCurrent ? trustedHTML('<svg class="w-4 h-4 text-[#0066cc] flex-shrink-0 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>') : '')}
+                    ${trustedHTML(isCurrent ? '<svg class="w-4 h-4 text-[#0066cc] flex-shrink-0 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>' : '')}
                 </div>
             </div>
         `;
         })
         .join('');
+
+    container.innerHTML = allBranchesOptionHtml + branchItemsHtml;
     container.querySelectorAll('[data-branch]').forEach((button) => {
         button.onclick = () => {
             if (!isSingleBranchLocked) selectActiveBranch(button.dataset.branch);
@@ -402,10 +495,14 @@ function renderBranchSelector() {
 
     const posPanelBranch = document.getElementById('pos-branch-select');
     if (posPanelBranch) {
+        const defaultBranchName =
+            (branches.find((b) => b.isDefault) || branches[0])?.name || FALLBACK_BRANCH;
+        const effectivePosBranch =
+            currentBranch === ALL_BRANCHES ? defaultBranchName : currentBranch;
         posPanelBranch.innerHTML = branches
             .map(
                 (b) =>
-                    `<option value="${escapeHTML(b.name)}" class="text-gray-800" ${b.name === currentBranch ? 'selected' : ''}>${escapeHTML(b.name)}</option>`
+                    `<option value="${escapeHTML(b.name)}" class="text-gray-800" ${b.name === effectivePosBranch ? 'selected' : ''}>${escapeHTML(b.name)}</option>`
             )
             .join('');
         posPanelBranch.disabled = isSingleBranchLocked;
@@ -415,8 +512,13 @@ function renderBranchSelector() {
 async function selectActiveBranch(branchName) {
     const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
     const allowed = getUserAllowedBranches(user);
+    const isAdmin = Boolean(user && user.role === 'admin');
 
-    if (user && user.role !== 'admin' && !allowed.includes(branchName)) {
+    if (branchName === ALL_BRANCHES && !isAdmin) {
+        showToast('Chỉ Quản trị viên mới có quyền xem toàn bộ chi nhánh!', 'warning');
+        return;
+    }
+    if (user && !isAdmin && !allowed.includes(branchName)) {
         showToast(`Bạn không được phân quyền làm việc tại chi nhánh "${branchName}"!`, 'warning');
         return;
     }
@@ -588,7 +690,15 @@ function openEditCurrentBranchFromSettings(event) {
         event.preventDefault();
     }
     document.getElementById('settings-modal')?.classList.add('hidden');
-    openEditBranchModal(getCurrentBranch());
+    const cur = getCurrentBranch();
+    const targetBranch =
+        cur === ALL_BRANCHES
+            ? (
+                  (KVStore.data.branches || []).find((b) => b.isDefault) ||
+                  (KVStore.data.branches || [])[0]
+              )?.name || FALLBACK_BRANCH
+            : cur;
+    openEditBranchModal(targetBranch);
 }
 
 async function saveBranchFromModal(e) {
@@ -727,15 +837,25 @@ function showToast(msg, type = 'info') {
     if (!toast || !msgEl) return;
     msgEl.textContent = msg;
     if (type === 'success') {
-        iconEl.className = 'w-2.5 h-2.5 rounded-full bg-green-400';
+        iconEl.className =
+            'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50 flex-shrink-0';
     } else if (type === 'error') {
-        iconEl.className = 'w-2.5 h-2.5 rounded-full bg-red-400';
+        iconEl.className =
+            'w-2.5 h-2.5 rounded-full bg-rose-400 shadow-sm shadow-rose-400/50 flex-shrink-0';
+    } else if (type === 'warning') {
+        iconEl.className =
+            'w-2.5 h-2.5 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50 flex-shrink-0';
     } else {
-        iconEl.className = 'w-2.5 h-2.5 rounded-full bg-blue-400';
+        iconEl.className =
+            'w-2.5 h-2.5 rounded-full bg-blue-400 shadow-sm shadow-blue-400/50 flex-shrink-0';
     }
-    toast.classList.remove('translate-x-[150%]');
+    toast.classList.remove('-translate-y-24', 'opacity-0', 'pointer-events-none');
+    toast.classList.add('translate-y-0', 'opacity-100');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toast.classList.add('translate-x-[150%]'), 2600);
+    toastTimer = setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('-translate-y-24', 'opacity-0', 'pointer-events-none');
+    }, 2800);
 }
 
 // --- 1. DASHBOARD ---
@@ -743,18 +863,19 @@ function renderDashboard() {
     const data = KVStore.data;
     const now = new Date();
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
 
-    // 1. Calculate Today's KPIs for CURRENT BRANCH ONLY
+    // 1. Calculate Today's KPIs for CURRENT BRANCH ONLY (or ALL BRANCHES)
     const branchInvoices = (data.invoices || []).filter(
         (i) =>
-            (i.branch || FALLBACK_BRANCH) === currentBranch &&
+            (isAll || (i.branch || FALLBACK_BRANCH) === currentBranch) &&
             (i.status !== 'cancelled' || i.bookingVersion === 2)
     );
     const todayInvoices = branchInvoices.filter((i) => matchesDateFilter(i.time, 'today'));
     const todayRevenue = todayInvoices.reduce((acc, cur) => acc + (cur.total || 0), 0);
     const branchReturns = (data.returns || []).filter(
         (r) =>
-            (r.branch || FALLBACK_BRANCH) === currentBranch &&
+            (isAll || (r.branch || FALLBACK_BRANCH) === currentBranch) &&
             !data.invoices.some(
                 (i) =>
                     i.code === r.invoiceCode && i.status === 'cancelled' && i.bookingVersion !== 2
@@ -774,7 +895,7 @@ function renderDashboard() {
     const elOrders = document.getElementById('dash-today-orders');
     if (elOrders) elOrders.textContent = `${todayInvoices.length} đơn`;
 
-    // 2. Month Net Revenue Badge for CURRENT BRANCH ONLY
+    // 2. Month Net Revenue Badge for CURRENT BRANCH ONLY (or ALL BRANCHES)
     const monthInvoices = branchInvoices.filter((i) => matchesDateFilter(i.time, 'this_month'));
     const monthRevenue = monthInvoices.reduce((acc, cur) => acc + (cur.total || 0), 0);
     const monthReturns = branchReturns
@@ -784,7 +905,7 @@ function renderDashboard() {
     const monthNetEl = document.getElementById('dash-month-net-revenue');
     if (monthNetEl) monthNetEl.textContent = `${formatVND(monthNet)} đ`;
 
-    // 3. Dynamic Daily Revenue Chart for CURRENT BRANCH ONLY (Days 1 to 20 of current month)
+    // 3. Dynamic Daily Revenue Chart for CURRENT BRANCH ONLY (or ALL BRANCHES)
     const dailyData = [];
     let maxDayVal = 5000000; // baseline scale
 
@@ -823,7 +944,7 @@ function renderDashboard() {
 
             col.innerHTML = renderHTML`
                 <div class="hidden group-hover:block absolute -top-10 bg-gray-900 text-white text-[11px] px-2 py-1 rounded shadow whitespace-nowrap z-20 pointer-events-none">
-                    Ngày ${item.day}: ${formatVND(item.total)} đ (${currentBranch})
+                    Ngày ${item.day}: ${formatVND(item.total)} đ (${isAll ? ALL_BRANCHES : currentBranch})
                 </div>
                 ${trustedHTML(item.total > 0 ? renderHTML`<div class="w-full max-w-[18px] bg-[#0066cc] hover:bg-[#0052a3] rounded-t-sm transition-all duration-300 shadow-xs" style="height: ${Math.max(6, barHeight)}%"></div>` : renderHTML`<div class="w-full max-w-[18px] bg-gray-200/50 rounded-t-xs" style="height: 2px"></div>`)}
             `;
@@ -838,10 +959,12 @@ function renderDashboard() {
 
     const legendLabel = document.getElementById('dashboard-chart-legend-label');
     if (legendLabel) {
-        legendLabel.textContent = `Doanh thu ${currentBranch} (Tháng ${now.getMonth() + 1}/${now.getFullYear()})`;
+        legendLabel.textContent = isAll
+            ? `Doanh thu toàn hệ thống (Tháng ${now.getMonth() + 1}/${now.getFullYear()})`
+            : `Doanh thu ${currentBranch} (Tháng ${now.getMonth() + 1}/${now.getFullYear()})`;
     }
 
-    // 4. Dynamic Top selling products for CURRENT BRANCH ONLY
+    // 4. Dynamic Top selling products for CURRENT BRANCH ONLY (or ALL BRANCHES)
     const productSalesMap = Object.create(null);
     branchInvoices.forEach((inv) => {
         (inv.items || []).forEach((item) => {
@@ -862,7 +985,7 @@ function renderDashboard() {
     const topEl = document.getElementById('dash-top-product');
     if (topEl) {
         if (sortedProducts.length === 0) {
-            topEl.innerHTML = renderHTML`<div class="text-gray-400 py-6 text-center text-[12.5px]">Chưa có dữ liệu bán hàng tại ${currentBranch}</div>`;
+            topEl.innerHTML = renderHTML`<div class="text-gray-400 py-6 text-center text-[12.5px]">Chưa có dữ liệu bán hàng ${isAll ? 'toàn hệ thống' : 'tại ' + currentBranch}</div>`;
         } else {
             topEl.innerHTML = sortedProducts
                 .slice(0, 3)
@@ -899,7 +1022,7 @@ function renderDashboard() {
         }
     }
 
-    // 5. Dynamic Top customers for CURRENT BRANCH ONLY
+    // 5. Dynamic Top customers for CURRENT BRANCH ONLY (or ALL BRANCHES)
     const branchCustMap = Object.create(null);
     branchInvoices.forEach((inv) => {
         const custName = inv.customer || 'Khách lẻ';
@@ -920,7 +1043,7 @@ function renderDashboard() {
     const topCustEl = document.getElementById('dash-top-customer');
     if (topCustEl) {
         if (sortedCustomers.length === 0) {
-            topCustEl.innerHTML = renderHTML`<div class="text-gray-400 py-6 text-center text-[12.5px]">Chưa có dữ liệu khách hàng tại ${currentBranch}</div>`;
+            topCustEl.innerHTML = renderHTML`<div class="text-gray-400 py-6 text-center text-[12.5px]">Chưa có dữ liệu khách hàng ${isAll ? 'toàn hệ thống' : 'tại ' + currentBranch}</div>`;
         } else {
             topCustEl.innerHTML = sortedCustomers
                 .slice(0, 3)
@@ -957,16 +1080,16 @@ function renderDashboard() {
         }
     }
 
-    // 6. Recent activity stream for CURRENT BRANCH ONLY
+    // 6. Recent activity stream for CURRENT BRANCH ONLY (or ALL BRANCHES)
     const actContainer = document.getElementById('dash-recent-activities');
     if (actContainer) {
         actContainer.innerHTML = '';
         const activities = [];
         const branchInvs = (data.invoices || []).filter(
-            (i) => (i.branch || FALLBACK_BRANCH) === currentBranch
+            (i) => isAll || (i.branch || FALLBACK_BRANCH) === currentBranch
         );
         const branchImps = (data.imports || []).filter(
-            (imp) => (imp.branch || FALLBACK_BRANCH) === currentBranch
+            (imp) => isAll || (imp.branch || FALLBACK_BRANCH) === currentBranch
         );
 
         branchInvs.slice(0, 5).forEach((inv) => {
@@ -989,7 +1112,12 @@ function renderDashboard() {
         });
 
         (data.recentActivities || [])
-            .filter((a) => a.branch === currentBranch || (a.text && a.text.includes(currentBranch)))
+            .filter(
+                (a) =>
+                    isAll ||
+                    a.branch === currentBranch ||
+                    (a.text && a.text.includes(currentBranch))
+            )
             .slice(0, 3)
             .forEach((act) => {
                 activities.push({
@@ -1148,7 +1276,7 @@ function renderPosScreen() {
     let subtotal = 0;
 
     const badgeCountEl = document.getElementById('pos-cart-badge-count');
-    if (badgeCountEl) badgeCountEl.textContent = `${curTab.cart.length} món`;
+    if (badgeCountEl) badgeCountEl.textContent = `${curTab.cart.length} sản phẩm`;
     const tabCountEl = document.getElementById('pos-tab-cart-count');
     if (tabCountEl) tabCountEl.textContent = String(curTab.cart.length);
 
@@ -1238,7 +1366,7 @@ function renderPosScreen() {
                             ${selectedImeisHtml}
                         </div>
                     </div>
-                    <button type="button" onclick="removePosItem('${item.code}')" class="w-7 h-7 rounded-xl bg-gray-100/80 hover:bg-rose-50 text-gray-400 hover:text-rose-600 inline-flex items-center justify-center font-bold text-xs transition flex-shrink-0" title="Xóa món">✕</button>
+                    <button type="button" onclick="removePosItem('${item.code}')" class="w-7 h-7 rounded-xl bg-gray-100/80 hover:bg-rose-50 text-gray-400 hover:text-rose-600 inline-flex items-center justify-center font-bold text-xs transition flex-shrink-0" title="Xoá" aria-label="Xoá">✕</button>
                 </div>
 
                 <!-- Bottom Row: Quantity Stepper, Unit Price, and Line Total -->
@@ -1268,6 +1396,16 @@ function renderPosScreen() {
                         <span class="text-gray-300 font-light mx-0.5 hidden sm:inline">|</span>
                         <span class="pos-line-total font-black ${isBelowCost ? 'text-red-600' : 'text-[#0066cc]'} text-[14px] sm:text-[15px] tabular-nums whitespace-nowrap min-w-[70px] text-right">${formatVND(lineTotal)} đ</span>
                     </div>
+                </div>
+
+                <!-- Item Note Row -->
+                <div class="pt-1.5 border-t border-dashed border-gray-100/90 flex items-center text-[11px] text-gray-500">
+                    <input type="text"
+                           data-note-code="${item.code}"
+                           value="${item.note || ''}"
+                           oninput="updatePosItemNote('${item.code}', this.value)"
+                           placeholder="Ghi chú: bảo hành, quà tặng, serial..."
+                           class="w-full bg-transparent border-0 border-b border-transparent hover:border-gray-300 focus:border-[#0066cc] focus:bg-white/80 rounded px-1 py-0.5 text-gray-700 placeholder-gray-400 focus:outline-none transition text-[11px]" />
                 </div>
             `;
             cartContainer.appendChild(row);
@@ -1857,15 +1995,15 @@ function printCurrentPosDraft() {
             name: i.name,
             qty: i.qty,
             price: i.price,
-            imeis: i.hasImei && Array.isArray(i.selectedImeis) ? i.selectedImeis : []
+            imeis: i.hasImei && Array.isArray(i.selectedImeis) ? i.selectedImeis : [],
+            note: i.note || ''
         })),
         total: subtotal,
         discount: curTab.discount || 0,
-        paid: grandTotal
+        paid: grandTotal,
+        _isDraft: true
     };
     openReceiptModal(draftInv);
-    const titleEl = document.querySelector('#receipt-modal .font-bold.text-\\[14px\\].uppercase');
-    if (titleEl) titleEl.textContent = 'PHIẾU TẠM TÍNH (DRAFT)';
 }
 
 function setPosDiscountType(type) {
@@ -2220,7 +2358,8 @@ function addPosCartItem(product, specificImei = null) {
             qty: 1,
             hasImei: Boolean(product.hasImei),
             selectedImeis: specificImei ? [specificImei] : [],
-            imeisExplicitlySelected: Boolean(specificImei)
+            imeisExplicitlySelected: Boolean(specificImei),
+            note: ''
         };
         curTab.cart.push(item);
     }
@@ -2231,6 +2370,15 @@ function addPosCartItem(product, specificImei = null) {
     renderPosScreen();
     if (specificImei) {
         showToast(`Đã thêm ${product.name} (IMEI: ${specificImei}) vào đơn!`, 'success');
+    }
+}
+
+function updatePosItemNote(code, note) {
+    const curTab = state.posTabs[state.activePosTab];
+    if (!curTab) return;
+    const item = curTab.cart.find((i) => i.code === code);
+    if (item) {
+        item.note = typeof note === 'string' ? note : '';
     }
 }
 
@@ -2490,7 +2638,8 @@ async function checkoutPos() {
                 imeis:
                     i.hasImei && Array.isArray(i.selectedImeis) && i.selectedImeis.length === i.qty
                         ? i.selectedImeis
-                        : undefined
+                        : undefined,
+                note: typeof i.note === 'string' ? i.note.trim() : ''
             })),
             customerId: tab.customer?.id || null,
             discount: tab.discount || 0,
@@ -2529,53 +2678,353 @@ async function checkoutPos() {
     }
 }
 
+// ==========================================
+// CUSTOM BILL IN & PRINT TEMPLATE CONTROLLER
+// ==========================================
+
+const DEFAULT_BILL_CONFIG = {
+    paperSize: 'k80',
+    title: 'HÓA ĐƠN BÁN HÀNG',
+    footer: 'Cảm ơn Quý khách & Hẹn gặp lại!',
+    showLogo: true,
+    showStore: true,
+    showCustomer: true,
+    showCashier: true,
+    showNote: true,
+    showImei: true,
+    showQr: true
+};
+
+function getBillConfig() {
+    const stored = KVStore.data?.settings?.billConfig;
+    if (!stored || typeof stored !== 'object') return { ...DEFAULT_BILL_CONFIG };
+    return { ...DEFAULT_BILL_CONFIG, ...stored };
+}
+
+function applyReceiptPaperSize(size) {
+    const isK58 = size === 'k58';
+    const btnK80 = document.getElementById('receipt-btn-k80');
+    const btnK58 = document.getElementById('receipt-btn-k58');
+    const printable = document.getElementById('printable-receipt');
+
+    if (btnK80 && btnK58) {
+        if (isK58) {
+            btnK58.className =
+                'px-2 py-0.5 rounded font-bold transition bg-white text-[#0066cc] shadow-2xs';
+            btnK80.className =
+                'px-2 py-0.5 rounded font-medium text-gray-600 transition hover:text-gray-900';
+        } else {
+            btnK80.className =
+                'px-2 py-0.5 rounded font-bold transition bg-white text-[#0066cc] shadow-2xs';
+            btnK58.className =
+                'px-2 py-0.5 rounded font-medium text-gray-600 transition hover:text-gray-900';
+        }
+    }
+    if (printable) {
+        printable.dataset.paper = isK58 ? 'k58' : 'k80';
+        if (isK58) {
+            printable.style.maxWidth = '270px';
+            printable.style.fontSize = '11px';
+            printable.style.margin = '0 auto';
+        } else {
+            printable.style.maxWidth = '360px';
+            printable.style.fontSize = '12px';
+            printable.style.margin = '0 auto';
+        }
+    }
+}
+
+function setReceiptPaperPreview(size) {
+    const cfg = getBillConfig();
+    cfg.paperSize = size;
+    if (!KVStore.data.settings) KVStore.data.settings = {};
+    KVStore.data.settings.billConfig = cfg;
+    applyReceiptPaperSize(size);
+    if (state.currentReceiptInvoice) {
+        renderReceiptContent(state.currentReceiptInvoice, cfg);
+    }
+}
+
+function openBillCustomModal() {
+    const modal = document.getElementById('bill-custom-modal');
+    if (!modal) return;
+    const cfg = getBillConfig();
+
+    const radK80 = document.getElementById('bill-opt-paper-k80');
+    const radK58 = document.getElementById('bill-opt-paper-k58');
+    if (radK80 && radK58) {
+        radK80.checked = cfg.paperSize !== 'k58';
+        radK58.checked = cfg.paperSize === 'k58';
+    }
+
+    const titleInput = document.getElementById('bill-custom-title');
+    if (titleInput) titleInput.value = cfg.title || 'HÓA ĐƠN BÁN HÀNG';
+
+    const footerInput = document.getElementById('bill-custom-footer');
+    if (footerInput) footerInput.value = cfg.footer || 'Cảm ơn Quý khách & Hẹn gặp lại!';
+
+    const setCb = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = Boolean(val);
+    };
+
+    setCb('bill-custom-show-logo', cfg.showLogo);
+    setCb('bill-custom-show-store', cfg.showStore);
+    setCb('bill-custom-show-customer', cfg.showCustomer);
+    setCb('bill-custom-show-cashier', cfg.showCashier);
+    setCb('bill-custom-show-note', cfg.showNote);
+    setCb('bill-custom-show-imei', cfg.showImei);
+    setCb('bill-custom-show-qr', cfg.showQr);
+
+    updateBillPaperCardsUI(cfg.paperSize);
+    modal.classList.remove('hidden');
+}
+
+function closeBillCustomModal() {
+    document.getElementById('bill-custom-modal')?.classList.add('hidden');
+}
+
+function updateBillPaperCardsUI(size) {
+    const k80Card = document.getElementById('bill-opt-paper-k80-card');
+    const k58Card = document.getElementById('bill-opt-paper-k58-card');
+    if (size === 'k58') {
+        k58Card?.classList.add('border-[#0066cc]', 'bg-blue-50/50', 'ring-1', 'ring-[#0066cc]/30');
+        k80Card?.classList.remove(
+            'border-[#0066cc]',
+            'bg-blue-50/50',
+            'ring-1',
+            'ring-[#0066cc]/30'
+        );
+    } else {
+        k80Card?.classList.add('border-[#0066cc]', 'bg-blue-50/50', 'ring-1', 'ring-[#0066cc]/30');
+        k58Card?.classList.remove(
+            'border-[#0066cc]',
+            'bg-blue-50/50',
+            'ring-1',
+            'ring-[#0066cc]/30'
+        );
+    }
+}
+
+function readBillCustomModalValues() {
+    const isK58 = document.getElementById('bill-opt-paper-k58')?.checked;
+    return {
+        paperSize: isK58 ? 'k58' : 'k80',
+        title:
+            (document.getElementById('bill-custom-title')?.value || '').trim() ||
+            'HÓA ĐƠN BÁN HÀNG',
+        footer:
+            (document.getElementById('bill-custom-footer')?.value || '').trim() ||
+            'Cảm ơn Quý khách & Hẹn gặp lại!',
+        showLogo: Boolean(document.getElementById('bill-custom-show-logo')?.checked),
+        showStore: Boolean(document.getElementById('bill-custom-show-store')?.checked),
+        showCustomer: Boolean(document.getElementById('bill-custom-show-customer')?.checked),
+        showCashier: Boolean(document.getElementById('bill-custom-show-cashier')?.checked),
+        showNote: Boolean(document.getElementById('bill-custom-show-note')?.checked),
+        showImei: Boolean(document.getElementById('bill-custom-show-imei')?.checked),
+        showQr: Boolean(document.getElementById('bill-custom-show-qr')?.checked)
+    };
+}
+
+function onBillConfigChange() {
+    const isK58 = document.getElementById('bill-opt-paper-k58')?.checked;
+    updateBillPaperCardsUI(isK58 ? 'k58' : 'k80');
+
+    if (
+        state.currentReceiptInvoice &&
+        !document.getElementById('receipt-modal')?.classList.contains('hidden')
+    ) {
+        const liveCfg = readBillCustomModalValues();
+        renderReceiptContent(state.currentReceiptInvoice, liveCfg);
+    }
+}
+
+async function saveBillCustomConfig() {
+    const cfg = readBillCustomModalValues();
+    if (!KVStore.data.settings) KVStore.data.settings = {};
+    KVStore.data.settings.billConfig = cfg;
+    await KVStore.save();
+    closeBillCustomModal();
+    if (state.currentReceiptInvoice) {
+        renderReceiptContent(state.currentReceiptInvoice, cfg);
+    }
+    showToast('Đã lưu mẫu in hóa đơn thành công!', 'success');
+}
+
+function resetBillCustomConfig() {
+    const def = { ...DEFAULT_BILL_CONFIG };
+    const radK80 = document.getElementById('bill-opt-paper-k80');
+    const radK58 = document.getElementById('bill-opt-paper-k58');
+    if (radK80) radK80.checked = true;
+    if (radK58) radK58.checked = false;
+    const titleInput = document.getElementById('bill-custom-title');
+    if (titleInput) titleInput.value = def.title;
+    const footerInput = document.getElementById('bill-custom-footer');
+    if (footerInput) footerInput.value = def.footer;
+
+    const setCb = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = Boolean(val);
+    };
+    setCb('bill-custom-show-logo', def.showLogo);
+    setCb('bill-custom-show-store', def.showStore);
+    setCb('bill-custom-show-customer', def.showCustomer);
+    setCb('bill-custom-show-cashier', def.showCashier);
+    setCb('bill-custom-show-note', def.showNote);
+    setCb('bill-custom-show-imei', def.showImei);
+    setCb('bill-custom-show-qr', def.showQr);
+
+    updateBillPaperCardsUI('k80');
+    onBillConfigChange();
+    showToast('Đã khôi phục thiết lập mẫu in mặc định', 'info');
+}
+
+function renderReceiptContent(inv, config = null) {
+    if (!inv) return;
+    const cfg = config || getBillConfig();
+    const s = KVStore.data?.settings || {};
+
+    // 1. Logo
+    const logoWrap = document.getElementById('receipt-logo-wrap');
+    const logoImg = document.getElementById('receipt-logo-img');
+    if (logoWrap && logoImg) {
+        if (cfg.showLogo && s.logoUrl) {
+            logoImg.src = s.logoUrl;
+            logoWrap.classList.remove('hidden');
+        } else {
+            logoWrap.classList.add('hidden');
+        }
+    }
+
+    // 2. Store info
+    const storeNameEl = document.getElementById('receipt-store-name');
+    const storeAddrEl = document.getElementById('receipt-address');
+    const storePhoneEl = document.getElementById('receipt-phone');
+    if (storeNameEl) {
+        storeNameEl.textContent = s.storeName || '';
+        storeNameEl.style.display = cfg.showStore ? '' : 'none';
+    }
+    if (storeAddrEl) {
+        storeAddrEl.textContent = s.address || '';
+        storeAddrEl.style.display = cfg.showStore ? '' : 'none';
+    }
+    if (storePhoneEl) {
+        storePhoneEl.textContent = `Hotline: ${s.hotline || ''} - ĐT: ${s.phone || ''}`;
+        storePhoneEl.style.display = cfg.showStore ? '' : 'none';
+    }
+
+    // 3. Bill Title
+    const titleEl = document.getElementById('receipt-title');
+    if (titleEl) {
+        if (inv._isDraft) {
+            titleEl.textContent = 'PHIẾU TẠM TÍNH (DRAFT)';
+        } else {
+            titleEl.textContent = cfg.title || 'HÓA ĐƠN BÁN HÀNG';
+        }
+    }
+
+    // 4. Invoice metadata
+    const codeEl = document.getElementById('receipt-code');
+    if (codeEl) codeEl.textContent = inv.code || '';
+    const timeEl = document.getElementById('receipt-time');
+    if (timeEl) timeEl.textContent = inv.time || '';
+
+    const custRow = document.getElementById('receipt-row-customer');
+    if (custRow) {
+        custRow.style.display = cfg.showCustomer ? '' : 'none';
+        const custVal = document.getElementById('receipt-customer');
+        if (custVal) custVal.textContent = inv.customer || 'Khách lẻ';
+    }
+    const cashierRow = document.getElementById('receipt-row-cashier');
+    if (cashierRow) {
+        cashierRow.style.display = cfg.showCashier ? '' : 'none';
+        const cashierVal = document.getElementById('receipt-cashier');
+        if (cashierVal) cashierVal.textContent = inv.cashier || s.cashier || 'Thu ngân';
+    }
+
+    // 5. Items
+    const tbody = document.getElementById('receipt-items-tbody');
+    if (tbody) {
+        tbody.innerHTML = '';
+        (inv.items || []).forEach((item, idx) => {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-gray-100 text-[12px]';
+            const imeisHtml =
+                cfg.showImei && Array.isArray(item.imeis) && item.imeis.length
+                    ? renderHTML`<div class="text-[10px] text-gray-500 font-mono mt-0.5 leading-tight text-left">IMEI: ${item.imeis.join(', ')}</div>`
+                    : trustedHTML('');
+            const noteHtml =
+                cfg.showNote && item.note && typeof item.note === 'string'
+                    ? renderHTML`<div class="text-[10px] text-gray-500 italic mt-0.5 leading-tight text-left">Ghi chú: ${item.note}</div>`
+                    : trustedHTML('');
+            tr.innerHTML = renderHTML`
+                <td class="py-1.5 pr-1 text-left">
+                    <div>${idx + 1}. ${item.name || item.code}</div>
+                    ${imeisHtml}
+                    ${noteHtml}
+                </td>
+                <td class="py-1.5 px-1 text-center font-bold">${item.qty}</td>
+                <td class="py-1.5 px-1 text-right">${formatVND(item.price)}</td>
+                <td class="py-1.5 pl-1 text-right font-bold">${formatVND(item.qty * item.price)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // 6. Totals
+    const totalEl = document.getElementById('receipt-total');
+    if (totalEl) totalEl.textContent = `${formatVND(inv.total)} đ`;
+    const discountRow = document.getElementById('receipt-row-discount');
+    if (discountRow) {
+        discountRow.style.display = inv.discount > 0 ? '' : 'none';
+        const discountVal = document.getElementById('receipt-discount');
+        if (discountVal) discountVal.textContent = `${formatVND(inv.discount || 0)} đ`;
+    }
+    const paidEl = document.getElementById('receipt-paid');
+    if (paidEl) paidEl.textContent = `${formatVND(inv.paid)} đ`;
+
+    // 7. VietQR
+    const qrWrap = document.getElementById('receipt-qr-wrap');
+    const qrImg = document.getElementById('receipt-qr-img');
+    if (qrWrap && qrImg) {
+        if (cfg.showQr && s.bankCode && s.bankAccount && inv.paid > 0) {
+            const bankCode = s.bankCode;
+            const bankAccount = s.bankAccount;
+            const bankOwner = s.bankOwner || s.storeName || 'NKIOT';
+            const addInfo = inv.code || 'HD';
+            const qrUrl = `https://api.vietqr.io/image/${bankCode}-${bankAccount}-compact.jpg?amount=${inv.paid}&addInfo=${encodeURIComponent(addInfo)}&accountName=${encodeURIComponent(bankOwner)}`;
+            qrImg.src = qrUrl;
+            qrWrap.classList.remove('hidden');
+        } else {
+            qrWrap.classList.add('hidden');
+        }
+    }
+
+    // 8. Footer note
+    const footerEl = document.getElementById('receipt-footer');
+    if (footerEl) {
+        footerEl.textContent = cfg.footer || 'Cảm ơn Quý khách & Hẹn gặp lại!';
+    }
+
+    // 9. Paper size visual styling
+    applyReceiptPaperSize(cfg.paperSize || 'k80');
+}
+
 function openReceiptModal(inv) {
     const modal = document.getElementById('receipt-modal');
     if (!modal) return;
-    const s = KVStore.data.settings;
-
-    document.getElementById('receipt-store-name').textContent = s.storeName;
-    document.getElementById('receipt-address').textContent = s.address;
-    document.getElementById('receipt-phone').textContent = `Hotline: ${s.hotline} - ĐT: ${s.phone}`;
-    document.getElementById('receipt-code').textContent = inv.code;
-    document.getElementById('receipt-time').textContent = inv.time;
-    document.getElementById('receipt-customer').textContent = inv.customer;
-    document.getElementById('receipt-cashier').textContent = inv.cashier || s.cashier;
-
-    const tbody = document.getElementById('receipt-items-tbody');
-    tbody.innerHTML = '';
-    (inv.items || []).forEach((item, idx) => {
-        const tr = document.createElement('tr');
-        tr.className = 'border-b border-gray-100 text-[12px]';
-        const imeisHtml =
-            Array.isArray(item.imeis) && item.imeis.length
-                ? renderHTML`<div class="text-[10px] text-gray-500 font-mono mt-0.5 leading-tight text-left">IMEI: ${item.imeis.join(', ')}</div>`
-                : trustedHTML('');
-        tr.innerHTML = renderHTML`
-            <td class="py-1.5 pr-1 text-left">
-                <div>${idx + 1}. ${item.name || item.code}</div>
-                ${imeisHtml}
-            </td>
-            <td class="py-1.5 px-1 text-center font-bold">${item.qty}</td>
-            <td class="py-1.5 px-1 text-right">${formatVND(item.price)}</td>
-            <td class="py-1.5 pl-1 text-right font-bold">${formatVND(item.qty * item.price)}</td>
-        `;
-        tbody.appendChild(tr);
-    });
-
-    document.getElementById('receipt-total').textContent = `${formatVND(inv.total)} đ`;
-    document.getElementById('receipt-discount').textContent = `${formatVND(inv.discount || 0)} đ`;
-    document.getElementById('receipt-paid').textContent = `${formatVND(inv.paid)} đ`;
-
+    state.currentReceiptInvoice = inv;
+    renderReceiptContent(inv);
     modal.classList.remove('hidden');
 }
 
 function closeReceiptModal() {
-    document.getElementById('receipt-modal').classList.add('hidden');
+    document.getElementById('receipt-modal')?.classList.add('hidden');
 }
 
 function printReceipt() {
-    printRegion('printable-receipt', true);
+    const cfg = getBillConfig();
+    printRegion('printable-receipt', true, cfg.paperSize || 'k80');
 }
 
 // Helper: Render standardized empty state row for data tables
@@ -2609,9 +3058,10 @@ function renderProducts() {
     tbody.innerHTML = '';
 
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
     const q = (document.getElementById('product-search-input')?.value || '').toLowerCase().trim();
     let list = (KVStore.data.products || []).filter(
-        (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
+        (p) => isAll || (p.branch || FALLBACK_BRANCH) === currentBranch
     );
 
     if (productFilterCategory !== 'all') {
@@ -2636,7 +3086,7 @@ function renderProducts() {
     if (list.length === 0) {
         tbody.innerHTML = getEmptyStateRow(
             9,
-            `Không tìm thấy hàng hóa phù hợp tại ${currentBranch}`
+            `Không tìm thấy hàng hóa phù hợp ${isAll ? 'toàn hệ thống' : 'tại ' + currentBranch}`
         );
         const countEl = document.getElementById('products-total-count');
         if (countEl) countEl.textContent = 'Hiển thị 0 hàng hóa';
@@ -2652,6 +3102,7 @@ function renderProducts() {
             <td class="py-3 px-3 font-semibold text-[#0066cc] font-mono">${p.code}</td>
             <td class="py-3 px-3 font-medium text-gray-900 leading-snug">
                 ${p.name}
+                ${trustedHTML(isAll && p.branch ? renderHTML`<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10.5px] font-semibold bg-blue-50 text-blue-700 ml-1.5">${p.branch}</span>` : '')}
                 ${trustedHTML(p.hasImei ? renderHTML`<button type="button" onclick="viewProductImeis('${p.code}')" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10.5px] font-bold kv-badge kv-badge-purple ml-1.5 transition cursor-pointer" title="Bấm để xem danh sách IMEI tồn kho">IMEI (${(p.imeis || []).length})</button>` : '')}
             </td>
             <td class="py-3 px-3 text-gray-600">${p.category}</td>
@@ -2788,11 +3239,14 @@ function openAddProductModal(editCode = null, callback = null) {
     form.dataset.editCode = editCode || '';
 
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
     let selectedCat = null;
     if (editCode) {
         titleEl.textContent = 'Chỉnh sửa hàng hóa';
         const p = (KVStore.data.products || []).find(
-            (item) => item.code === editCode && (item.branch || FALLBACK_BRANCH) === currentBranch
+            (item) =>
+                item.code === editCode &&
+                (isAll || (item.branch || FALLBACK_BRANCH) === currentBranch)
         );
         if (p) {
             document.getElementById('prod-code').value = p.code;
@@ -2866,6 +3320,12 @@ function updateProductModalPriceColor(e) {
 async function saveProductFromModal(e) {
     e.preventDefault();
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
+    const defaultBranch =
+        ((KVStore.data.branches || []).find((b) => b.isDefault) || (KVStore.data.branches || [])[0])
+            ?.name || FALLBACK_BRANCH;
+    const effectiveBranch = isAll ? defaultBranch : currentBranch;
+
     const code = document.getElementById('prod-code').value.trim();
     const name = document.getElementById('prod-name').value.trim();
     const category = document.getElementById('prod-category').value.trim();
@@ -2890,7 +3350,7 @@ async function saveProductFromModal(e) {
     }
 
     const idx = (KVStore.data.products || []).findIndex(
-        (p) => p.code === code && (p.branch || FALLBACK_BRANCH) === currentBranch
+        (p) => p.code === code && (isAll || (p.branch || FALLBACK_BRANCH) === currentBranch)
     );
     let savedProduct;
     if (idx >= 0 && !isEdit) {
@@ -2900,6 +3360,7 @@ async function saveProductFromModal(e) {
 
     if (idx >= 0) {
         const currentImeis = KVStore.data.products[idx].imeis || [];
+        const productBranch = KVStore.data.products[idx].branch || effectiveBranch;
         KVStore.data.products[idx] = {
             ...KVStore.data.products[idx],
             name,
@@ -2910,7 +3371,7 @@ async function saveProductFromModal(e) {
             minStock,
             unit,
             barcode,
-            branch: currentBranch,
+            branch: productBranch,
             hasImei,
             imeis: currentImeis
         };
@@ -2919,7 +3380,7 @@ async function saveProductFromModal(e) {
     } else {
         const idExists = (KVStore.data.products || []).some((p) => p.id === code);
         savedProduct = {
-            id: idExists ? `${code}_${currentBranch}` : code,
+            id: idExists ? `${code}_${effectiveBranch}` : code,
             code,
             name,
             category,
@@ -2930,7 +3391,7 @@ async function saveProductFromModal(e) {
             unit,
             barcode,
             status: 'active',
-            branch: currentBranch,
+            branch: effectiveBranch,
             hasImei,
             imeis: []
         };
@@ -2955,9 +3416,10 @@ function editProduct(code) {
 
 async function deleteProduct(code) {
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
     if (confirm(`Bạn có chắc chắn muốn xóa sản phẩm ${code}?`)) {
         KVStore.data.products = (KVStore.data.products || []).filter(
-            (p) => !(p.code === code && (p.branch || FALLBACK_BRANCH) === currentBranch)
+            (p) => !(p.code === code && (isAll || (p.branch || FALLBACK_BRANCH) === currentBranch))
         );
         await KVStore.save();
         renderProducts();
@@ -3061,8 +3523,9 @@ function renderStocktakes() {
     if (!tbody) return;
 
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
     const stocktakes = (KVStore.data?.stocktakes || []).filter(
-        (st) => (st.branch || FALLBACK_BRANCH) === currentBranch
+        (st) => isAll || (st.branch || FALLBACK_BRANCH) === currentBranch
     );
     const q = (document.getElementById('stocktake-search-input')?.value || '').toLowerCase().trim();
 
@@ -3082,7 +3545,7 @@ function renderStocktakes() {
     if (list.length === 0) {
         tbody.innerHTML = getEmptyStateRow(
             10,
-            `Không tìm thấy phiếu kiểm kho nào phù hợp tại ${currentBranch}`
+            `Không tìm thấy phiếu kiểm kho nào phù hợp ${isAll ? 'toàn hệ thống' : 'tại ' + currentBranch}`
         );
         return;
     }
@@ -3140,11 +3603,15 @@ function openCreateStocktakeModal() {
     if (!modal) return;
 
     const currentBranch = getCurrentBranch();
-    const stocktakes = KVStore.data?.stocktakes || [];
+    const isAll = currentBranch === ALL_BRANCHES;
+    const defaultBranch =
+        ((KVStore.data.branches || []).find((b) => b.isDefault) || (KVStore.data.branches || [])[0])
+            ?.name || FALLBACK_BRANCH;
+    const effectiveBranch = isAll ? defaultBranch : currentBranch;
     const nextCode = makeCode('PKK');
 
     document.getElementById('stocktake-modal-code').textContent = nextCode;
-    document.getElementById('stocktake-branch-input').value = currentBranch;
+    document.getElementById('stocktake-branch-input').value = effectiveBranch;
     document.getElementById('stocktake-cashier-input').value =
         KVStore.data?.settings?.cashier || 'Trần Văn Nhất';
     document.getElementById('stocktake-note-input').value = '';
@@ -3153,7 +3620,7 @@ function openCreateStocktakeModal() {
     const select = document.getElementById('stocktake-add-product-select');
     if (select) {
         const branchProducts = (KVStore.data?.products || []).filter(
-            (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
+            (p) => (p.branch || FALLBACK_BRANCH) === effectiveBranch
         );
         select.innerHTML =
             trustedHTML('<option value="">+ Chọn hàng hóa thêm vào phiếu kiểm...</option>') +
@@ -3172,8 +3639,13 @@ function openCreateStocktakeModal() {
 
 function loadAllProductsToStocktake() {
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
+    const defaultBranch =
+        ((KVStore.data.branches || []).find((b) => b.isDefault) || (KVStore.data.branches || [])[0])
+            ?.name || FALLBACK_BRANCH;
+    const effectiveBranch = isAll ? defaultBranch : currentBranch;
     const products = (KVStore.data?.products || []).filter(
-        (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
+        (p) => (p.branch || FALLBACK_BRANCH) === effectiveBranch
     );
     activeStocktakeItems = products.map((p) => ({
         code: p.code,
@@ -3186,7 +3658,7 @@ function loadAllProductsToStocktake() {
     }));
     renderStocktakeRows();
     showToast(
-        `Đã nạp toàn bộ ${activeStocktakeItems.length} sản phẩm của ${currentBranch} vào phiếu kiểm!`,
+        `Đã nạp toàn bộ ${activeStocktakeItems.length} sản phẩm của ${effectiveBranch} vào phiếu kiểm!`,
         'info'
     );
 }
@@ -3199,8 +3671,13 @@ function addStocktakeProductRow(code) {
         return;
     }
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
+    const defaultBranch =
+        ((KVStore.data.branches || []).find((b) => b.isDefault) || (KVStore.data.branches || [])[0])
+            ?.name || FALLBACK_BRANCH;
+    const effectiveBranch = isAll ? defaultBranch : currentBranch;
     const p = (KVStore.data?.products || []).find(
-        (item) => item.code === code && (item.branch || FALLBACK_BRANCH) === currentBranch
+        (item) => item.code === code && (item.branch || FALLBACK_BRANCH) === effectiveBranch
     );
     if (!p) return;
 
@@ -3390,12 +3867,13 @@ function renderTransfers() {
     if (!tbody) return;
 
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
     const transfers = KVStore.data?.transfers || [];
     const q = (document.getElementById('transfer-search-input')?.value || '').toLowerCase().trim();
     const statusFilter = document.getElementById('transfer-status-filter')?.value || 'all';
 
     let list = transfers.filter(
-        (tf) => tf.fromBranch === currentBranch || tf.toBranch === currentBranch
+        (tf) => isAll || tf.fromBranch === currentBranch || tf.toBranch === currentBranch
     );
     if (statusFilter !== 'all') {
         list = list.filter((tf) => tf.status === statusFilter);
@@ -3416,7 +3894,7 @@ function renderTransfers() {
     if (list.length === 0) {
         tbody.innerHTML = getEmptyStateRow(
             10,
-            `Không tìm thấy phiếu chuyển hàng nào liên quan đến ${currentBranch}`
+            `Không tìm thấy phiếu chuyển hàng nào liên quan đến ${isAll ? 'toàn bộ chi nhánh' : currentBranch}`
         );
         return;
     }
@@ -3485,13 +3963,18 @@ function openCreateTransferModal() {
 
     document.getElementById('transfer-modal-code').textContent = nextCode;
     const currentBranch = getCurrentBranch();
-    document.getElementById('transfer-from-branch-input').value = currentBranch;
+    const isAll = currentBranch === ALL_BRANCHES;
+    const defaultBranch =
+        ((KVStore.data.branches || []).find((b) => b.isDefault) || (KVStore.data.branches || [])[0])
+            ?.name || FALLBACK_BRANCH;
+    const effectiveFromBranch = isAll ? defaultBranch : currentBranch;
+    document.getElementById('transfer-from-branch-input').value = effectiveFromBranch;
 
     // Populate toBranch select
     const branches = KVStore.data?.branches || [];
     const toSelect = document.getElementById('transfer-to-branch-select');
     if (toSelect) {
-        const otherBranches = branches.filter((b) => b.name !== currentBranch);
+        const otherBranches = branches.filter((b) => b.name !== effectiveFromBranch);
         if (otherBranches.length > 0) {
             toSelect.innerHTML = otherBranches
                 .map(
@@ -3512,7 +3995,7 @@ function openCreateTransferModal() {
     const prodSelect = document.getElementById('transfer-add-product-select');
     if (prodSelect) {
         const branchProducts = (KVStore.data?.products || []).filter(
-            (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
+            (p) => (p.branch || FALLBACK_BRANCH) === effectiveFromBranch
         );
         prodSelect.innerHTML =
             trustedHTML('<option value="">+ Chọn hàng hóa cần chuyển...</option>') +
@@ -3532,8 +4015,13 @@ function openCreateTransferModal() {
 function addTransferProductRow(code) {
     if (!code) return;
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
+    const defaultBranch =
+        ((KVStore.data.branches || []).find((b) => b.isDefault) || (KVStore.data.branches || [])[0])
+            ?.name || FALLBACK_BRANCH;
+    const effectiveFromBranch = isAll ? defaultBranch : currentBranch;
     const p = (KVStore.data?.products || []).find(
-        (item) => item.code === code && (item.branch || FALLBACK_BRANCH) === currentBranch
+        (item) => item.code === code && (item.branch || FALLBACK_BRANCH) === effectiveFromBranch
     );
     if (!p) return;
 
@@ -3773,10 +4261,11 @@ function renderInvoices() {
     tbody.innerHTML = '';
 
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
     const q = (document.getElementById('invoice-search-input')?.value || '').toLowerCase().trim();
     const dateFilter = document.getElementById('invoice-date-filter')?.value || 'all';
     let list = (KVStore.data.invoices || []).filter(
-        (i) => (i.branch || FALLBACK_BRANCH) === currentBranch
+        (i) => isAll || (i.branch || FALLBACK_BRANCH) === currentBranch
     );
 
     if (invoiceStatusFilter === 'completed') {
@@ -3803,7 +4292,7 @@ function renderInvoices() {
     if (list.length === 0) {
         tbody.innerHTML = getEmptyStateRow(
             9,
-            `Không tìm thấy hóa đơn phù hợp tại ${currentBranch}`
+            `Không tìm thấy hóa đơn phù hợp ${isAll ? 'toàn hệ thống' : 'tại ' + currentBranch}`
         );
         const countEl = document.getElementById('invoices-total-count');
         if (countEl) countEl.textContent = 'Hiển thị 0 hóa đơn';
@@ -3834,6 +4323,7 @@ function renderInvoices() {
                 <div class="flex items-center space-x-1.5">
                     <span class="${row.status === 'cancelled' ? 'line-through text-gray-500' : ''}">${row.code}</span>
                     ${statusBadge}
+                    ${trustedHTML(isAll && row.branch ? renderHTML`<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10.5px] font-semibold bg-gray-100 text-gray-700">${row.branch}</span>` : '')}
                 </div>
             </td>
             <td class="py-2.5 px-3 text-gray-600 font-mono text-[12px]">${row.time}</td>
@@ -3892,12 +4382,17 @@ function openInvoiceDetailModal(inv) {
             Array.isArray(item.imeis) && item.imeis.length
                 ? renderHTML`<div class="text-[11px] text-gray-500 font-mono mt-0.5 leading-tight">IMEI: ${item.imeis.join(', ')}</div>`
                 : trustedHTML('');
+        const noteHtml =
+            item.note && typeof item.note === 'string'
+                ? renderHTML`<div class="text-[11px] text-gray-500 italic mt-0.5 leading-tight">Ghi chú: ${item.note}</div>`
+                : trustedHTML('');
         tr.innerHTML = renderHTML`
             <td class="py-2 pr-2">${idx + 1}</td>
             <td class="py-2 px-2 font-mono text-[#0066cc]">${item.code}</td>
             <td class="py-2 px-2 font-medium">
                 <div>${item.name}</div>
                 ${imeisHtml}
+                ${noteHtml}
             </td>
             <td class="py-2 px-2 text-center font-bold">${item.qty}</td>
             <td class="py-2 px-2 text-right">${formatVND(item.price)}</td>
@@ -4118,10 +4613,11 @@ function renderImports() {
     tbody.innerHTML = '';
 
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
     const q = (document.getElementById('import-search-input')?.value || '').toLowerCase().trim();
     const dateFilter = document.getElementById('import-date-filter')?.value || 'all';
     let list = (KVStore.data.imports || []).filter(
-        (imp) => (imp.branch || FALLBACK_BRANCH) === currentBranch
+        (imp) => isAll || (imp.branch || FALLBACK_BRANCH) === currentBranch
     );
 
     if (dateFilter !== 'all') {
@@ -4140,7 +4636,7 @@ function renderImports() {
     if (list.length === 0) {
         tbody.innerHTML = getEmptyStateRow(
             11,
-            `Không tìm thấy phiếu nhập nào phù hợp tại ${currentBranch}`
+            `Không tìm thấy phiếu nhập nào phù hợp ${isAll ? 'toàn hệ thống' : 'tại ' + currentBranch}`
         );
         const countEl = document.getElementById('imports-total-count');
         if (countEl) countEl.textContent = 'Hiển thị 0 phiếu nhập';
@@ -4166,7 +4662,10 @@ function renderImports() {
             <td class="py-3 px-2 text-center text-gray-400 hover:text-yellow-500" onclick="event.stopPropagation(); toggleStar(this)">
                 <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
             </td>
-            <td class="py-3 px-3 font-semibold text-[#0066cc] font-mono">${row.code}</td>
+            <td class="py-3 px-3 font-semibold text-[#0066cc] font-mono">
+                ${row.code}
+                ${trustedHTML(isAll && row.branch ? renderHTML`<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10.5px] font-semibold bg-gray-100 text-gray-700">${row.branch}</span>` : '')}
+            </td>
             <td class="py-3 px-3 text-gray-600 font-mono text-[12px]">${row.time}</td>
             <td class="py-3 px-3 text-gray-600 font-mono">${row.nccCode || ''}</td>
             <td class="py-3 px-3 text-gray-900 font-medium">${row.nccName || ''}</td>
@@ -4683,8 +5182,16 @@ function updateImportDebtCalc() {
 }
 
 async function saveNewImport() {
+    const curBr = getCurrentBranch();
+    const effectiveBranch =
+        curBr === ALL_BRANCHES
+            ? (
+                  (KVStore.data.branches || []).find((b) => b.isDefault) ||
+                  (KVStore.data.branches || [])[0]
+              )?.name || FALLBACK_BRANCH
+            : curBr;
     const receipt = await KVStore.command('import', {
-        branch: getCurrentBranch(),
+        branch: effectiveBranch,
         supplierCode: document.getElementById('import-ncc-select').value,
         items: currentImportItems,
         paid: parseVND(document.getElementById('import-paid-input').value),
@@ -4779,9 +5286,9 @@ function openAddCustomerModal(editCode = null, callback = null) {
 async function saveCustomerFromModal(e) {
     e.preventDefault();
     const code = document.getElementById('cust-code').value.trim();
-    const name = document.getElementById('cust-name').value.trim();
+    const name = normalizeTitleCase(document.getElementById('cust-name').value);
     const phone = document.getElementById('cust-phone').value.trim();
-    const address = document.getElementById('cust-address').value.trim();
+    const address = normalizeTitleCase(document.getElementById('cust-address').value);
     const debt = parseVND(document.getElementById('cust-debt').value) || 0;
     const points = parseInt(document.getElementById('cust-points').value, 10) || 0;
     const note = document.getElementById('cust-note')?.value.trim() || '';
@@ -4850,11 +5357,19 @@ async function collectCustomerDebt(code) {
         customer.debt
     );
     if (value === null) return;
+    const curBr = getCurrentBranch();
+    const effectiveBranch =
+        curBr === ALL_BRANCHES
+            ? (
+                  (KVStore.data.branches || []).find((b) => b.isDefault) ||
+                  (KVStore.data.branches || [])[0]
+              )?.name || FALLBACK_BRANCH
+            : curBr;
     await KVStore.command('debt', {
         type: 'thu',
         partnerId: customer.id,
         amount: parseVND(value),
-        branch: getCurrentBranch(),
+        branch: effectiveBranch,
         method: 'cash'
     });
     renderAllViews();
@@ -4941,9 +5456,9 @@ function openAddSupplierModal(editCode = null, callback = null) {
 async function saveSupplierFromModal(e) {
     e.preventDefault();
     const code = document.getElementById('sup-code').value.trim();
-    const name = document.getElementById('sup-name').value.trim();
+    const name = normalizeTitleCase(document.getElementById('sup-name').value);
     const phone = document.getElementById('sup-phone').value.trim();
-    const address = document.getElementById('sup-address').value.trim();
+    const address = normalizeTitleCase(document.getElementById('sup-address').value);
     const debt = parseVND(document.getElementById('sup-debt').value);
     const note = document.getElementById('sup-note')?.value.trim() || '';
 
@@ -5003,12 +5518,13 @@ function renderCashbook() {
     tbody.innerHTML = '';
 
     const currentBranch = getCurrentBranch();
+    const isAll = currentBranch === ALL_BRANCHES;
     const dateFilter = document.getElementById('cashbook-date-filter')?.value || 'all';
     const fundFilter = document.getElementById('cashbook-fund-filter')?.value || 'all';
 
     // Calculate branch balances by fund type
     const branchCashbook = (KVStore.data.cashbook || []).filter(
-        (tx) => (tx.branch || FALLBACK_BRANCH) === currentBranch
+        (tx) => isAll || (tx.branch || FALLBACK_BRANCH) === currentBranch
     );
 
     let cashThu = 0,
@@ -5049,7 +5565,7 @@ function renderCashbook() {
     if (list.length === 0) {
         tbody.innerHTML = getEmptyStateRow(
             8,
-            `Không có phiếu thu chi nào phù hợp tại ${currentBranch}`
+            `Không có phiếu thu chi nào phù hợp ${isAll ? 'toàn hệ thống' : 'tại ' + currentBranch}`
         );
         const countEl = document.getElementById('cashbook-total-count');
         if (countEl) countEl.textContent = 'Hiển thị 0 phiếu thu chi';
@@ -5063,7 +5579,10 @@ function renderCashbook() {
             tr.className = 'table-row-hover border-b border-gray-100/70 text-[13px] transition';
             tr.innerHTML = renderHTML`
                 <td class="py-3 pl-3 pr-2 text-center"><input type="checkbox" class="kv-checkbox"></td>
-                <td class="py-3 px-3 font-semibold text-[#0066cc] font-mono">${tx.code}</td>
+                <td class="py-3 px-3 font-semibold text-[#0066cc] font-mono">
+                    ${tx.code}
+                    ${trustedHTML(isAll && tx.branch ? renderHTML`<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10.5px] font-semibold bg-gray-100 text-gray-700">${tx.branch}</span>` : '')}
+                </td>
                 <td class="py-3 px-3 text-gray-600 font-mono text-[12px]">${tx.time}</td>
                 <td class="py-3 px-3 text-center font-medium">
                     <span class="kv-badge ${tx.type === 'thu' ? 'kv-badge-success' : 'kv-badge-danger'}">
@@ -5158,9 +5677,17 @@ async function saveNewReceipt(e) {
     e.preventDefault();
     const category = document.getElementById('rec-category').value,
         method = document.getElementById('rec-method').value;
+    const curBr = getCurrentBranch();
+    const effectiveBranch =
+        curBr === ALL_BRANCHES
+            ? (
+                  (KVStore.data.branches || []).find((b) => b.isDefault) ||
+                  (KVStore.data.branches || [])[0]
+              )?.name || FALLBACK_BRANCH
+            : curBr;
     const payload = {
         type: 'thu',
-        branch: getCurrentBranch(),
+        branch: effectiveBranch,
         category,
         person: document.getElementById('rec-person').value,
         amount: Number(document.getElementById('rec-amount').value),
@@ -5232,9 +5759,17 @@ async function saveNewPayment(e) {
     e.preventDefault();
     const category = document.getElementById('pay-category').value,
         method = document.getElementById('pay-method').value;
+    const curBr = getCurrentBranch();
+    const effectiveBranch =
+        curBr === ALL_BRANCHES
+            ? (
+                  (KVStore.data.branches || []).find((b) => b.isDefault) ||
+                  (KVStore.data.branches || [])[0]
+              )?.name || FALLBACK_BRANCH
+            : curBr;
     const payload = {
         type: 'chi',
-        branch: getCurrentBranch(),
+        branch: effectiveBranch,
         category,
         person: document.getElementById('pay-person').value,
         amount: Number(document.getElementById('pay-amount').value),
@@ -5445,11 +5980,11 @@ function openSettingsModal() {
 async function saveSettingsFromModal(e) {
     e.preventDefault();
     const s = KVStore.data.settings;
-    s.storeName = document.getElementById('set-store-name').value.trim();
+    s.storeName = normalizeTitleCase(document.getElementById('set-store-name').value);
     sessionStorage.setItem('minikiot_branch', getCurrentBranch());
     s.phone = document.getElementById('set-phone').value.trim();
     s.hotline = document.getElementById('set-hotline').value.trim();
-    s.address = document.getElementById('set-address').value.trim();
+    s.address = normalizeTitleCase(document.getElementById('set-address').value);
     s.bankCode = document.getElementById('set-bank-code').value.trim();
     s.bankName = document.getElementById('set-bank-name').value.trim();
     s.bankAccount = document.getElementById('set-bank-account').value.trim();
@@ -6200,7 +6735,7 @@ function onRolePresetChange(role) {
 async function saveStaffSubmit(e) {
     e.preventDefault();
     const id = document.getElementById('staff-form-id').value;
-    const name = document.getElementById('staff-input-name').value.trim();
+    const name = normalizeTitleCase(document.getElementById('staff-input-name').value);
     const phone = document.getElementById('staff-input-phone').value.trim();
     const username = document.getElementById('staff-input-username').value.trim().toLowerCase();
     const password = document.getElementById('staff-input-password').value;
@@ -6402,6 +6937,7 @@ deleteCustomer = guardMutation(deleteCustomer);
 saveSupplierFromModal = guardMutation(saveSupplierFromModal);
 deleteSupplier = guardMutation(deleteSupplier);
 saveSettingsFromModal = guardMutation(saveSettingsFromModal);
+saveBillCustomConfig = guardMutation(saveBillCustomConfig);
 saveStaffSubmit = guardMutation(saveStaffSubmit);
 toggleStaffStatus = guardMutation(toggleStaffStatus);
 deleteStaff = guardMutation(deleteStaff);

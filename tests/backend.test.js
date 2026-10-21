@@ -212,6 +212,14 @@ test('sale snapshots serial and historic cost; discounted credit return settles 
     assert.equal(db.getAllData().products[0].stock, 3);
     assert.equal(db.getAllData().cashbook.filter((c) => c.type === 'chi').length, 1);
 });
+test('sale snapshots item note alongside price and serials', () => {
+    const inv = sell({
+        items: [{ code: 'SP', qty: 1, note: 'Bảo hành 12 tháng, tặng kèm cáp sạc' }],
+        given: 100000
+    });
+    assert.equal(inv.items[0].note, 'Bảo hành 12 tháng, tặng kèm cáp sạc');
+    command('cancel', { invoiceId: inv.id });
+});
 test('partial return then cancel refunds only remainder', () => {
     const inv = sell({ items: [{ code: 'SP', qty: 3 }], discount: 10000, given: 290000 });
     command('return', { invoiceId: inv.id, items: [{ code: 'SP', qty: 1 }] });

@@ -165,7 +165,8 @@ function sale(data, user, input) {
             costPrice,
             total: amount(price * qty),
             hasImei: !!p.hasImei,
-            imeis: takeStock(p, qty, row.imeis)
+            imeis: takeStock(p, qty, row.imeis),
+            note: typeof row.note === 'string' ? row.note.trim() : ''
         };
     });
     const subtotal = amount(items.reduce((s, i) => s + i.total, 0)),

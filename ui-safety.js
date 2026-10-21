@@ -43,13 +43,14 @@ function renderHTML(strings, ...values) {
     });
     return new HTMLValue(result);
 }
-function printRegion(id, thermal = false) {
+function printRegion(id, thermal = false, paperSize = 'k80') {
     const source = document.getElementById(id);
     if (!source) return;
     document.getElementById('print-root')?.remove();
     const root = document.createElement('section');
     root.id = 'print-root';
     root.dataset.thermal = String(thermal);
+    root.dataset.paper = String(paperSize || 'k80');
     const clone = source.cloneNode(true);
     clone.removeAttribute('id');
     clone.className = '';

@@ -226,12 +226,15 @@ function printCurrentReport() {
 function renderReports() {
     const data = KVStore.data;
     const currentBranch = getCurrentBranch();
+    const isAll =
+        currentBranch ===
+        (typeof ALL_BRANCHES !== 'undefined' ? ALL_BRANCHES : 'Toàn bộ chi nhánh');
     const branchProducts = (data.products || []).filter(
-        (p) => (p.branch || FALLBACK_BRANCH) === currentBranch
+        (p) => isAll || (p.branch || FALLBACK_BRANCH) === currentBranch
     );
 
     const repBranchEl = document.getElementById('rep-branch-name');
-    if (repBranchEl) repBranchEl.textContent = currentBranch;
+    if (repBranchEl) repBranchEl.textContent = isAll ? 'Toàn bộ chi nhánh' : currentBranch;
 
     const dateFilter = document.getElementById('rep-date-filter')?.value || 'this_month';
 
@@ -249,16 +252,19 @@ function renderReports() {
 }
 
 function renderSalesReportTab(data, currentBranch, branchProducts, dateFilter) {
+    const isAll =
+        currentBranch ===
+        (typeof ALL_BRANCHES !== 'undefined' ? ALL_BRANCHES : 'Toàn bộ chi nhánh');
     const branchInvoices = (data.invoices || []).filter(
         (i) =>
-            (i.branch || FALLBACK_BRANCH) === currentBranch &&
+            (isAll || (i.branch || FALLBACK_BRANCH) === currentBranch) &&
             (i.status !== 'cancelled' || i.bookingVersion === 2)
     );
     const validInvoices = branchInvoices.filter((i) => matchesDateFilter(i.time, dateFilter));
 
     const branchReturns = (data.returns || []).filter(
         (r) =>
-            (r.branch || FALLBACK_BRANCH) === currentBranch &&
+            (isAll || (r.branch || FALLBACK_BRANCH) === currentBranch) &&
             !data.invoices.some(
                 (i) =>
                     i.code === r.invoiceCode && i.status === 'cancelled' && i.bookingVersion !== 2
@@ -518,9 +524,12 @@ function renderSalesReportTab(data, currentBranch, branchProducts, dateFilter) {
 }
 
 function renderProductsReportTab(data, currentBranch, branchProducts, dateFilter) {
+    const isAll =
+        currentBranch ===
+        (typeof ALL_BRANCHES !== 'undefined' ? ALL_BRANCHES : 'Toàn bộ chi nhánh');
     const branchInvoices = (data.invoices || []).filter(
         (i) =>
-            (i.branch || FALLBACK_BRANCH) === currentBranch &&
+            (isAll || (i.branch || FALLBACK_BRANCH) === currentBranch) &&
             (i.status !== 'cancelled' || i.bookingVersion === 2)
     );
     const validInvoices = branchInvoices.filter((i) => matchesDateFilter(i.time, dateFilter));
@@ -553,7 +562,7 @@ function renderProductsReportTab(data, currentBranch, branchProducts, dateFilter
     (data.returns || [])
         .filter(
             (r) =>
-                r.branch === currentBranch &&
+                (isAll || (r.branch || FALLBACK_BRANCH) === currentBranch) &&
                 matchesDateFilter(r.time, dateFilter) &&
                 !data.invoices.some(
                     (i) =>
@@ -761,8 +770,11 @@ function renderProductsReportTab(data, currentBranch, branchProducts, dateFilter
 }
 
 function renderCashflowReportTab(data, currentBranch, branchProducts, dateFilter) {
+    const isAll =
+        currentBranch ===
+        (typeof ALL_BRANCHES !== 'undefined' ? ALL_BRANCHES : 'Toàn bộ chi nhánh');
     const branchCashbook = (data.cashbook || []).filter(
-        (c) => (c.branch || FALLBACK_BRANCH) === currentBranch
+        (c) => isAll || (c.branch || FALLBACK_BRANCH) === currentBranch
     );
     const validCashbook = branchCashbook.filter((c) => matchesDateFilter(c.time, dateFilter));
 
