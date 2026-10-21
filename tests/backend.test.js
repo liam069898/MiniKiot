@@ -247,6 +247,34 @@ test('debt collection allocates invoice payments and later cancel returns collec
     command('cancel', { invoiceId: inv.id });
     assert.equal(db.getAllData().cashbook.find((c) => c.type === 'chi').amount, 100000);
 });
+test('receive assigns distinct product IDs to multiple new destination products', () => {
+    const d = db.getAllData();
+    d.products.push({
+        ...d.products[0],
+        id: 'SP2',
+        code: 'SP2',
+        name: 'Second product',
+        hasImei: false,
+        imeis: [],
+        stock: 2
+    });
+    db.saveAllData(d);
+    const transfer = command('transfer', {
+        fromBranch: 'A',
+        toBranch: 'B',
+        items: [
+            { code: 'SP', qty: 1 },
+            { code: 'SP2', qty: 1 }
+        ]
+    }).result;
+    command('receive', { id: transfer.id });
+    const received = db
+        .getAllData()
+        .products.filter((p) => p.branch === 'B' && ['SP', 'SP2'].includes(p.code));
+    assert.equal(received.length, 2);
+    assert.equal(new Set(received.map((p) => p.id)).size, 2);
+});
+
 test('transfer carries serials, rejects receive twice, updates weighted cost', () => {
     const d = db.getAllData();
     d.products.push({

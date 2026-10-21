@@ -9,7 +9,9 @@ const defaultData = {
         bankCode: '',
         bankName: '',
         bankAccount: '',
-        bankOwner: ''
+        bankOwner: '',
+        logoUrl: '',
+        logoText: 'KiotViet'
     },
     branches: [],
     categories: [],
@@ -54,10 +56,20 @@ function applyDelta(base, delta) {
     }
     return next;
 }
-function makeCode(prefix = 'TX') {
+function makeRequestId() {
     const bytes = new Uint8Array(16);
     crypto.getRandomValues(bytes);
-    return prefix + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Mã dự kiến dựa trên dữ liệu được phép xem, không thay thế mã server cấp khi lưu.
+function makeCode(prefix = 'TX', source = null) {
+    const data = source ?? KVStore.data;
+    if (Array.isArray(data)) {
+        const table = CODE_PREFIXES[String(prefix || 'TX').toUpperCase()]?.table;
+        return generateCode(table ? { [table]: data } : { items: data }, prefix);
+    }
+    return generateCode(data, prefix);
 }
 const KVStore = {
     data: copyData(defaultData),
@@ -199,7 +211,7 @@ const KVStore = {
             throw new Error(
                 'Có giao dịch chưa xác nhận. Bấm trạng thái lưu để đối soát trước khi tạo giao dịch mới.'
             );
-        const requestId = makeCode(),
+        const requestId = makeRequestId(),
             pending = {
                 userId: this.user.id,
                 requestId,

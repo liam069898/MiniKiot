@@ -130,7 +130,15 @@ function browser() {
             handler(req, response).catch(reject);
             req.end(options.body || '');
         });
-    for (const file of ['constants.js', 'ui-safety.js', 'client-store.js', 'app.js'])
+    for (const file of [
+        'constants.js',
+        'ui-safety.js',
+        'client-store.js',
+        'app-utils.js',
+        'app-reports.js',
+        'app-export.js',
+        'app.js'
+    ])
         w.eval(
             fs
                 .readFileSync(file, 'utf8')

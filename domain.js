@@ -1,7 +1,6 @@
 'use strict';
-const { randomUUID } = require('node:crypto');
 const { requirePermission, allowedBranches } = require('./security');
-const { FALLBACK_BRANCH, RETAIL_CUSTOMER_CODE } = require('./constants');
+const { FALLBACK_BRANCH, RETAIL_CUSTOMER_CODE, generateCode } = require('./constants');
 const fail = (message, status = 422) => {
     throw Object.assign(new Error(message), { status });
 };
@@ -14,7 +13,7 @@ const quantity = (value) => {
     if (!value) fail('Số lượng phải lớn hơn 0.');
     return value;
 };
-const code = (prefix) => `${prefix}${randomUUID()}`;
+const code = (data, prefix) => generateCode(data, prefix);
 const timestamp = () => {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, '0');
@@ -69,7 +68,7 @@ function voucher(
 ) {
     if (!value) return;
     amount(value);
-    const id = code(type === 'thu' ? 'PT' : 'PC');
+    const id = code(data, type === 'thu' ? 'PT' : 'PC');
     data.cashbook.unshift({
         id,
         code: id,
@@ -194,7 +193,7 @@ function sale(data, user, input) {
         paid = Math.min(given, total);
     if (retail && paid < total) fail('Khách lẻ chưa trả đủ tiền. Hãy chọn khách hàng để ghi nợ.');
     const method = paymentMethod(input.paymentMethod),
-        id = code('HD');
+        id = code(data, 'HD');
     const invoice = {
         id,
         code: id,
@@ -329,7 +328,7 @@ function returnGoods(data, user, input, cancel = false) {
     inv.hasReturned = !!(previous.length || items.length);
     inv.redPaid = inv.total - inv.returnedTotal > inv.paid;
     const method = paymentMethod(input.refundMethod || inv.paymentMethod || 'cash'),
-        id = code('TH');
+        id = code(data, 'TH');
     const slip = {
         id,
         code: id,
@@ -419,7 +418,7 @@ function importGoods(data, user, input) {
     const total = amount(items.reduce((s, i) => s + i.total, 0)),
         paid = amount(input.paid);
     if (paid > total) fail('Tiền trả vượt tổng nhập.');
-    const id = code('PN'),
+    const id = code(data, 'PN'),
         method = paymentMethod(
             input.paymentMethod === 'bank'
                 ? 'transfer'
@@ -571,7 +570,7 @@ function transfer(data, user, input) {
             }
         };
     });
-    const id = code('PCH'),
+    const id = code(data, 'PCH'),
         record = {
             id,
             code: id,
@@ -601,7 +600,7 @@ function receive(data, user, input) {
             );
             p = {
                 ...item.productSnapshot,
-                id: code('SP'),
+                id: code(data, 'SP'),
                 code: item.code,
                 name: item.name,
                 unit: item.unit,
@@ -638,7 +637,7 @@ function stocktake(data, user, input) {
     } else {
         const br = branch(data, user, input.branch);
         if (!Array.isArray(input.items) || !input.items.length) fail('Phiếu kiểm trống.');
-        const id = code('PKK');
+        const id = code(data, 'PKK');
         record = {
             id,
             code: id,

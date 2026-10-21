@@ -1,5 +1,5 @@
 module.exports = {
-    content: ['./index.html', './app.js'],
+    content: ['./index.html', './app.js', './app-*.js'],
     theme: {
         extend: {
             borderRadius: {

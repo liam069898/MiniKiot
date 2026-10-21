@@ -412,7 +412,8 @@ function applyEdit(data, user, incoming) {
         )
             fail('Cài đặt không hợp lệ.');
         for (const [k, v] of Object.entries(incoming.settings)) {
-            if (!Object.hasOwn(data.settings, k) || typeof v !== 'string' || v.length > 1000)
+            const maxLen = k === 'logoUrl' ? 2 * 1024 * 1024 : 1000;
+            if (!Object.hasOwn(data.settings, k) || typeof v !== 'string' || v.length > maxLen)
                 fail('Trường cài đặt không hợp lệ.');
         }
         if (Object.keys(data.settings).some((k) => !Object.hasOwn(incoming.settings, k)))

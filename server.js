@@ -17,6 +17,9 @@ const ASSETS = {
     // Old URL kept so existing bookmarks still open the app.
     '/giao_di_n_qu_n_l_b_n_h_ng_kiotviet.html': 'index.html',
     '/app.js': 'app.js',
+    '/app-utils.js': 'app-utils.js',
+    '/app-reports.js': 'app-reports.js',
+    '/app-export.js': 'app-export.js',
     '/constants.js': 'constants.js',
     '/data.js': 'client-store.js',
     '/ui-safety.js': 'ui-safety.js',

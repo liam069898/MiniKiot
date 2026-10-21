@@ -11,7 +11,9 @@ const defaultData = {
         bankName: 'Vietcombank',
         bankAccount: '1028889999',
         bankOwner: 'TRAN VAN NHAT',
-        cashier: 'Trần Văn Nhất'
+        cashier: 'Trần Văn Nhất',
+        logoUrl: '',
+        logoText: 'KiotViet'
     },
     products: [
         {

@@ -28,7 +28,11 @@ let db = null;
 function getDb() {
     if (!db) {
         db = new DatabaseSync(DB_PATH);
-        db.exec('PRAGMA journal_mode = WAL;');
+        try {
+            db.exec('PRAGMA journal_mode = WAL;');
+        } catch {
+            // Network filesystems like SMB/NFS may not support WAL shared memory
+        }
         db.exec('PRAGMA synchronous = FULL;');
         db.exec('PRAGMA busy_timeout = 5000;');
     }
@@ -242,6 +246,16 @@ function initDb() {
             if (!columns.some((c) => c.name === 'extra'))
                 d.exec(`ALTER TABLE ${table} ADD COLUMN extra TEXT NOT NULL DEFAULT '{}'`);
         }
+        try {
+            d.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(
+                'logoUrl',
+                '""'
+            );
+            d.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(
+                'logoText',
+                '"KiotViet"'
+            );
+        } catch {}
         if (isNew) {
             const initial = JSON.parse(JSON.stringify(defaultData));
             for (const key of ENTITY_TABLES)
@@ -463,7 +477,9 @@ function getAllData() {
     } catch {}
 
     const result = {
-        settings: Object.keys(settings).length ? settings : defaultData.settings,
+        settings: Object.keys(settings).length
+            ? { ...defaultData.settings, ...settings }
+            : defaultData.settings,
         branches,
         categories,
         products,

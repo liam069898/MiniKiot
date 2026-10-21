@@ -82,7 +82,8 @@ Các module chính:
 - `application.js`, `domain.js`: revision, giao dịch, validation, nghiệp vụ.
 - `db.js`, `backup.js`: SQLite, migration và sao lưu.
 - `constants.js`: hằng số dùng chung server/trình duyệt (chi nhánh mặc định cho bản ghi cũ, mã khách lẻ).
-- `client-store.js`, `ui-safety.js`, `app.js`: kết nối, phục hồi yêu cầu, render/in và giao diện.
+- `client-store.js`, `ui-safety.js`: kết nối, phục hồi yêu cầu, render HTML an toàn và in.
+- `app-utils.js`, `app-reports.js`, `app-export.js`, `app.js`: tiện ích, báo cáo, mã vạch/xuất file và giao diện. Các script dùng chung phạm vi global, phải được nạp theo thứ tự trong `index.html`; `app.js` được nạp sau cùng.
 - `data.js`: dữ liệu ví dụ cho test và mặc định khởi tạo, không phục vụ ra trình duyệt. URL `/data.js` trả về `client-store.js`.
 
 Xem [trạng thái sửa lỗi](FIXES.md), [báo cáo review ban đầu](CODE_REVIEW.md) và [triển khai HTTPS/reverse proxy](DEPLOYMENT.md).
@@ -94,6 +95,6 @@ Xem [trạng thái sửa lỗi](FIXES.md), [báo cáo review ban đầu](CODE_RE
 - `audit_log` chưa tự xóa vì chưa có chính sách lưu trữ nghiệp vụ/pháp lý.
 - Chứng từ mới giữ `time` theo giờ máy chủ để hiển thị và thêm `createdAt` ISO UTC để sắp xếp, đối soát. Dữ liệu cũ không bị suy đoán giờ UTC.
 - Trạng thái hàng hóa chỉ dùng `active` / `archived`; giá trị cũ `inactive` được migrate sang `archived` khi khởi động.
-- Tailwind CSS và font Inter được phục vụ từ máy chủ. Sau khi sửa class trong `index.html`/`app.js`, chạy `npm run assets:build` và commit `public/tailwind.css`.
+- Tailwind CSS và font Inter được phục vụ từ máy chủ. Sau khi sửa class trong `index.html` hoặc các file `app*.js`, chạy `npm run assets:build` và commit `public/tailwind.css`.
 
 Các bước phát triển tiếp theo: cập nhật từng bản ghi thay vì ghi lại snapshot phía server, phân trang dữ liệu, tách tiếp `app.js`, chuyển inline handler/script/style để bật CSP chặt và kiểm thử thiết bị thực tế.

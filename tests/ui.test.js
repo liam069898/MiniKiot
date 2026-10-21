@@ -17,11 +17,13 @@ function browser() {
     w.eval(fs.readFileSync('constants.js', 'utf8'));
     w.eval(fs.readFileSync('ui-safety.js', 'utf8'));
     w.eval(fs.readFileSync('client-store.js', 'utf8'));
-    w.eval(
-        fs
-            .readFileSync('app.js', 'utf8')
-            .replace("window.addEventListener('DOMContentLoaded', initApp);", '')
-    );
+    for (const file of ['app-utils.js', 'app-reports.js', 'app-export.js', 'app.js']) {
+        w.eval(
+            fs
+                .readFileSync(file, 'utf8')
+                .replace("window.addEventListener('DOMContentLoaded', initApp);", '')
+        );
+    }
     const d = JSON.parse(JSON.stringify(require('../data').defaultData));
     d.users = d.users.map(({ password, ...u }) => u);
     w.fixtureData = d;
