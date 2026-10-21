@@ -197,6 +197,24 @@ function productHasHistory(data, product) {
         )
     );
 }
+function branchHasHistory(data, branchName) {
+    return (
+        ['invoices', 'imports', 'returns', 'stocktakes'].some((table) =>
+            data[table].some((doc) => branchOf(doc) === branchName)
+        ) ||
+        data.transfers.some(
+            (doc) => doc.fromBranch === branchName || doc.toBranch === branchName
+        ) ||
+        (data.cashbook || []).some((doc) => branchOf(doc) === branchName) ||
+        data.products.some(
+            (p) =>
+                branchOf(p) === branchName &&
+                (Number(p.stock) > 0 ||
+                    (Array.isArray(p.imeis) && p.imeis.length > 0) ||
+                    productHasHistory(data, p))
+        )
+    );
+}
 function validateRecord(table, row, data, old, user) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) fail('Bản ghi không hợp lệ.');
     if (typeof row.id !== 'string' || !/^[A-Za-z0-9_.:-]{1,160}$/.test(row.id))
@@ -255,8 +273,36 @@ function validateRecord(table, row, data, old, user) {
         );
         if (row.imeis.some((i) => otherSerials.has(i))) fail('IMEI đã có tại kho khác.');
     }
-    if (table === 'branches' && old && row.name !== old.name)
-        fail('Không thể đổi tên chi nhánh đã được tham chiếu.');
+    if (table === 'branches' && old && row.name !== old.name) {
+        if (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 500)
+            fail('Tên chi nhánh không hợp lệ.');
+        if (
+            data.branches.some(
+                (b) => b.id !== row.id && b.name.toLowerCase() === row.name.trim().toLowerCase()
+            )
+        )
+            fail('Tên chi nhánh đã tồn tại.');
+        if (branchHasHistory(data, old.name))
+            fail('Không thể đổi tên chi nhánh đã phát sinh chứng từ hoặc có tồn kho.');
+
+        const oldName = old.name;
+        const newName = row.name.trim();
+        for (const p of data.products) {
+            if (p.branch === oldName) {
+                p.branch = newName;
+                if (p.id === `${p.code}_${oldName}`) p.id = `${p.code}_${newName}`;
+            }
+        }
+        for (const u of data.users) {
+            if (u.branch === oldName) u.branch = newName;
+            if (Array.isArray(u.branches)) {
+                u.branches = u.branches.map((b) => (b === oldName ? newName : b));
+            }
+        }
+        if (data.settings && data.settings.branch === oldName) {
+            data.settings.branch = newName;
+        }
+    }
     if (table === 'users') {
         if (typeof row.username !== 'string' || !/^[a-z0-9_.-]{1,80}$/.test(row.username))
             fail('Tên đăng nhập không hợp lệ.');

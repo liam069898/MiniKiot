@@ -365,18 +365,32 @@ function renderBranchSelector() {
     container.innerHTML = branches
         .map((b) => {
             const isCurrent = b.name === currentBranch;
+            const branchIdOrCode = b.id || b.code || b.name;
             return renderHTML`
-            <button data-branch="${b.name}" class="w-full text-left px-3 py-2 rounded-xl text-[12.5px] flex items-center justify-between transition ${isCurrent ? 'bg-blue-50 text-[#0066cc] font-bold' : 'hover:bg-gray-100 text-gray-700 font-medium'} ${isSingleBranchLocked ? 'cursor-default' : ''}">
-                <div class="flex flex-col truncate pr-2">
+            <div class="group flex items-center justify-between p-1 rounded-xl text-[12.5px] transition ${isCurrent ? 'bg-blue-50/90 text-[#0066cc] font-semibold' : 'hover:bg-gray-100/80 text-gray-700 font-medium'}">
+                <button type="button" data-branch="${b.name}" class="flex-1 min-w-0 text-left flex flex-col px-2 py-1 ${isSingleBranchLocked ? 'cursor-default' : 'cursor-pointer'}">
                     <span class="flex items-center space-x-1.5">
-                        <span>🏢</span>
-                        <span class="truncate">${b.name}</span>
-                        ${trustedHTML(isSingleBranchLocked ? trustedHTML('<span class="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full font-semibold ml-1">Cố định</span>') : '')}
+                        <span class="flex-shrink-0">🏢</span>
+                        <span class="truncate font-semibold ${isCurrent ? 'text-[#0066cc]' : 'text-gray-800'}">${b.name}</span>
+                        ${trustedHTML(isCurrent ? trustedHTML('<span class="text-[9.5px] text-blue-700 bg-blue-100/90 px-1.5 py-0.2 rounded font-semibold flex-shrink-0">Hiện tại</span>') : '')}
+                        ${trustedHTML(b.isDefault ? trustedHTML('<span class="text-[9.5px] text-emerald-700 bg-emerald-100/90 px-1.5 py-0.2 rounded font-semibold flex-shrink-0">Mặc định</span>') : '')}
+                        ${trustedHTML(isSingleBranchLocked ? trustedHTML('<span class="text-[9.5px] text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded font-semibold ml-0.5 flex-shrink-0">Cố định</span>') : '')}
                     </span>
-                    <span class="text-[11px] text-gray-500 font-normal pl-5 truncate">${b.address || b.phone || ''}</span>
+                    <span class="text-[11px] text-gray-400 font-normal pl-5 truncate">${b.address || b.phone || (b.code ? 'Mã: ' + b.code : '')}</span>
+                </button>
+                <div class="flex items-center space-x-1 flex-shrink-0 pr-1">
+                    ${trustedHTML(
+                        isAdmin
+                            ? renderHTML`
+                        <button type="button" onclick="openEditBranchModal('${branchIdOrCode}', event)" class="p-1.5 rounded-lg text-gray-400 hover:text-[#0066cc] hover:bg-blue-100/80 transition" title="Chỉnh sửa chi nhánh ${b.name}">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                        </button>
+                    `
+                            : ''
+                    )}
+                    ${trustedHTML(isCurrent ? trustedHTML('<svg class="w-4 h-4 text-[#0066cc] flex-shrink-0 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>') : '')}
                 </div>
-                ${trustedHTML(isCurrent ? trustedHTML('<svg class="w-4 h-4 text-[#0066cc] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>') : '')}
-            </button>
+            </div>
         `;
         })
         .join('');
@@ -424,40 +438,173 @@ async function selectActiveBranch(branchName) {
     showToast(`Đã chuyển làm việc sang chi nhánh: ${branchName}`, 'info');
 }
 
+function closeBranchModal() {
+    const modal = document.getElementById('branch-modal');
+    if (modal) modal.classList.add('hidden');
+    const editId = document.getElementById('branch-edit-id');
+    if (editId) editId.value = '';
+    const hint = document.getElementById('branch-name-hint');
+    if (hint) hint.textContent = '';
+    const nameInput = document.getElementById('branch-name-input');
+    if (nameInput) {
+        nameInput.readOnly = false;
+        nameInput.classList.remove('bg-gray-50/80', 'text-gray-500');
+    }
+}
+
+function branchHasHistoryFrontend(branchName) {
+    const data = KVStore.data;
+    if (!data) return false;
+    const hasDoc = ['invoices', 'imports', 'returns', 'stocktakes'].some((table) =>
+        (data[table] || []).some((doc) => (doc.branch || FALLBACK_BRANCH) === branchName)
+    );
+    if (hasDoc) return true;
+    const hasTransfer = (data.transfers || []).some(
+        (doc) => doc.fromBranch === branchName || doc.toBranch === branchName
+    );
+    if (hasTransfer) return true;
+    const hasCash = (data.cashbook || []).some(
+        (doc) => (doc.branch || FALLBACK_BRANCH) === branchName
+    );
+    if (hasCash) return true;
+    const hasStock = (data.products || []).some(
+        (p) =>
+            (p.branch || FALLBACK_BRANCH) === branchName &&
+            (Number(p.stock) > 0 || (Array.isArray(p.imeis) && p.imeis.length > 0))
+    );
+    return hasStock;
+}
+
 function openAddBranchModal() {
     const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
-    if (user && user.role !== 'admin') {
+    if (user && user.role !== 'admin' && !hasPermission('settings')) {
         showToast('Chỉ Quản trị viên mới có quyền tạo mới chi nhánh!', 'error');
         return;
     }
     const modal = document.getElementById('branch-modal');
     if (!modal) return;
 
-    const branches = KVStore.data?.branches || [];
-    const nextCode = makeCode('CN');
+    const editIdEl = document.getElementById('branch-edit-id');
+    if (editIdEl) editIdEl.value = '';
+    const titleEl = document.getElementById('branch-modal-title');
+    if (titleEl) titleEl.textContent = 'Thêm mới chi nhánh';
+    const submitBtn = document.getElementById('branch-modal-submit-btn');
+    if (submitBtn) submitBtn.textContent = 'Lưu chi nhánh';
 
-    document.getElementById('branch-code-input').value = nextCode;
-    document.getElementById('branch-name-input').value = '';
+    const nextCode = makeCode('CN');
+    const codeInput = document.getElementById('branch-code-input');
+    if (codeInput) codeInput.value = nextCode;
+    const nameInput = document.getElementById('branch-name-input');
+    if (nameInput) {
+        nameInput.value = '';
+        nameInput.readOnly = false;
+        nameInput.classList.remove('bg-gray-50/80', 'text-gray-500');
+    }
+    const hint = document.getElementById('branch-name-hint');
+    if (hint) hint.textContent = '';
     document.getElementById('branch-phone-input').value = '';
     document.getElementById('branch-address-input').value = '';
     document.getElementById('branch-note-input').value = '';
+    const defCb = document.getElementById('branch-default-input');
+    if (defCb) defCb.checked = false;
 
     modal.classList.remove('hidden');
     setTimeout(() => document.getElementById('branch-name-input')?.focus(), 50);
 }
 
+function openEditBranchModal(branchIdentifier, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+    if (user && user.role !== 'admin' && !hasPermission('settings')) {
+        showToast('Chỉ Quản trị viên mới có quyền chỉnh sửa chi nhánh!', 'error');
+        return;
+    }
+    const modal = document.getElementById('branch-modal');
+    if (!modal) return;
+
+    const branches = KVStore.data?.branches || [];
+    const b = branches.find(
+        (item) =>
+            item.id === branchIdentifier ||
+            item.code === branchIdentifier ||
+            item.name === branchIdentifier
+    );
+    if (!b) {
+        showToast('Không tìm thấy thông tin chi nhánh!', 'error');
+        return;
+    }
+
+    const menu = document.getElementById('branch-dropdown-menu');
+    if (menu) menu.classList.add('hidden');
+
+    const editIdEl = document.getElementById('branch-edit-id');
+    if (editIdEl) editIdEl.value = b.id || b.code || b.name;
+    const titleEl = document.getElementById('branch-modal-title');
+    if (titleEl) titleEl.textContent = `Chỉnh sửa chi nhánh: ${b.name}`;
+    const submitBtn = document.getElementById('branch-modal-submit-btn');
+    if (submitBtn) submitBtn.textContent = 'Cập nhật chi nhánh';
+
+    const codeInput = document.getElementById('branch-code-input');
+    if (codeInput) codeInput.value = b.code || b.id || '';
+    const nameInput = document.getElementById('branch-name-input');
+    if (nameInput) {
+        nameInput.value = b.name || '';
+        const hasHistory = branchHasHistoryFrontend(b.name);
+        const hint = document.getElementById('branch-name-hint');
+        if (hasHistory) {
+            nameInput.readOnly = true;
+            nameInput.classList.add('bg-gray-50/80', 'text-gray-500');
+            if (hint)
+                hint.textContent =
+                    'Chi nhánh đã phát sinh chứng từ giao dịch. Tên chi nhánh được khóa cố định để đảm bảo toàn vẹn dữ liệu.';
+        } else {
+            nameInput.readOnly = false;
+            nameInput.classList.remove('bg-gray-50/80', 'text-gray-500');
+            if (hint) hint.textContent = '';
+        }
+    }
+    document.getElementById('branch-phone-input').value = b.phone || '';
+    document.getElementById('branch-address-input').value = b.address || '';
+    document.getElementById('branch-note-input').value = b.note || '';
+    const defCb = document.getElementById('branch-default-input');
+    if (defCb) defCb.checked = Boolean(b.isDefault);
+
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+        if (!document.getElementById('branch-name-input')?.readOnly) {
+            document.getElementById('branch-name-input')?.focus();
+        } else {
+            document.getElementById('branch-phone-input')?.focus();
+        }
+    }, 50);
+}
+
+function openEditCurrentBranchFromSettings(event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    document.getElementById('settings-modal')?.classList.add('hidden');
+    openEditBranchModal(getCurrentBranch());
+}
+
 async function saveBranchFromModal(e) {
     if (e) e.preventDefault();
     const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
-    if (user && user.role !== 'admin') {
-        showToast('Chỉ Quản trị viên mới có quyền thêm chi nhánh!', 'error');
+    if (user && user.role !== 'admin' && !hasPermission('settings')) {
+        showToast('Chỉ Quản trị viên mới có quyền quản lý chi nhánh!', 'error');
         return;
     }
+    const editId = (document.getElementById('branch-edit-id')?.value || '').trim();
     const code = document.getElementById('branch-code-input').value.trim();
     const name = document.getElementById('branch-name-input').value.trim();
     const phone = document.getElementById('branch-phone-input').value.trim();
     const address = document.getElementById('branch-address-input').value.trim();
     const note = document.getElementById('branch-note-input').value.trim();
+    const isDefault = Boolean(document.getElementById('branch-default-input')?.checked);
 
     if (!name) {
         showToast('Vui lòng nhập tên chi nhánh!', 'warning');
@@ -466,31 +613,105 @@ async function saveBranchFromModal(e) {
 
     if (!KVStore.data.branches) KVStore.data.branches = [];
 
-    const exists = KVStore.data.branches.find((b) => b.name.toLowerCase() === name.toLowerCase());
-    if (exists) {
-        showToast(`Chi nhánh "${name}" đã tồn tại!`, 'warning');
-        return;
+    if (editId) {
+        const b = KVStore.data.branches.find(
+            (item) => item.id === editId || item.code === editId || item.name === editId
+        );
+        if (!b) {
+            showToast('Không tìm thấy chi nhánh cần chỉnh sửa!', 'error');
+            return;
+        }
+
+        const duplicate = KVStore.data.branches.find(
+            (item) => item !== b && item.name.toLowerCase() === name.toLowerCase()
+        );
+        if (duplicate) {
+            showToast(`Tên chi nhánh "${name}" đã tồn tại!`, 'warning');
+            return;
+        }
+
+        const oldName = b.name;
+        if (oldName !== name && branchHasHistoryFrontend(oldName)) {
+            showToast(
+                'Không thể đổi tên chi nhánh đã phát sinh chứng từ hoặc có tồn kho!',
+                'warning'
+            );
+            return;
+        }
+
+        b.name = name;
+        b.phone = phone;
+        b.address = address;
+        b.note = note;
+        if (isDefault) {
+            KVStore.data.branches.forEach((other) => {
+                other.isDefault = other === b;
+            });
+        } else {
+            b.isDefault = false;
+        }
+
+        if (oldName !== name) {
+            (KVStore.data.products || []).forEach((p) => {
+                if (p.branch === oldName) {
+                    p.branch = name;
+                    if (p.id === `${p.code}_${oldName}`) p.id = `${p.code}_${name}`;
+                }
+            });
+            (KVStore.data.users || []).forEach((u) => {
+                if (u.branch === oldName) u.branch = name;
+                if (Array.isArray(u.branches)) {
+                    u.branches = u.branches.map((br) => (br === oldName ? name : br));
+                }
+            });
+            if (KVStore.data.settings && KVStore.data.settings.branch === oldName) {
+                KVStore.data.settings.branch = name;
+            }
+            if (sessionStorage.getItem('minikiot_branch') === oldName) {
+                sessionStorage.setItem('minikiot_branch', name);
+            }
+        }
+
+        await KVStore.save();
+        closeBranchModal();
+        renderBranchSelector();
+        renderAllViews();
+        showToast(`Đã cập nhật chi nhánh "${name}" thành công!`, 'success');
+    } else {
+        const exists = KVStore.data.branches.find(
+            (b) => b.name.toLowerCase() === name.toLowerCase()
+        );
+        if (exists) {
+            showToast(`Chi nhánh "${name}" đã tồn tại!`, 'warning');
+            return;
+        }
+
+        const newBranch = {
+            id: code,
+            code,
+            name,
+            phone,
+            address,
+            isDefault,
+            note
+        };
+
+        if (isDefault) {
+            KVStore.data.branches.forEach((other) => {
+                other.isDefault = false;
+            });
+        }
+
+        KVStore.data.branches.push(newBranch);
+        KVStore.data.settings.branch = name;
+        sessionStorage.setItem('minikiot_branch', name);
+        await KVStore.save();
+
+        closeBranchModal();
+        renderBranchSelector();
+        renderAllViews();
+        showToast(`Đã tạo chi nhánh mới "${name}" thành công!`, 'success');
     }
-
-    const newBranch = {
-        id: code,
-        code,
-        name,
-        phone,
-        address,
-        isDefault: false,
-        note
-    };
-
-    KVStore.data.branches.push(newBranch);
-    KVStore.data.settings.branch = name;
-    sessionStorage.setItem('minikiot_branch', name);
-    await KVStore.save();
-
-    document.getElementById('branch-modal')?.classList.add('hidden');
-    renderBranchSelector();
-    renderAllViews();
-    showToast(`Đã tạo chi nhánh mới "${name}" thành công!`, 'success');
 }
 
 // --- TOAST NOTIFICATION ---
@@ -786,18 +1007,37 @@ function renderDashboard() {
             activities.forEach((act) => {
                 const div = document.createElement('div');
                 div.className =
-                    'flex items-center space-x-3 text-[12.5px] p-2 rounded-xl hover:bg-white/60 transition';
+                    'flex items-start gap-2.5 p-2 rounded-xl hover:bg-white/70 transition border border-transparent hover:border-gray-100/80';
+
+                let iconBadge;
+                if (act.type === 'import') {
+                    iconBadge = trustedHTML(
+                        '<div class="w-8 h-8 rounded-xl bg-emerald-50/90 border border-emerald-200/60 text-emerald-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">📦</div>'
+                    );
+                } else if (act.type === 'stock') {
+                    iconBadge = trustedHTML(
+                        '<div class="w-8 h-8 rounded-xl bg-purple-50/90 border border-purple-200/60 text-purple-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">📋</div>'
+                    );
+                } else {
+                    iconBadge = trustedHTML(
+                        '<div class="w-8 h-8 rounded-xl bg-blue-50/90 border border-blue-200/60 text-blue-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">🛒</div>'
+                    );
+                }
+
                 div.innerHTML = renderHTML`
-                    <div class="w-8 h-8 rounded-xl bg-blue-50/80 border border-blue-200/50 text-[#0066cc] flex items-center justify-center font-bold text-sm flex-shrink-0">
-                        ${act.type === 'sale' ? '🛒' : act.type === 'import' ? '📦' : '📋'}
-                    </div>
+                    ${iconBadge}
                     <div class="flex-1 min-w-0">
-                        <div class="truncate leading-snug">
-                            <span class="font-semibold text-[#0066cc]">${act.title}</span>
-                            <span class="text-gray-600"> ${act.action} </span>
-                            ${trustedHTML(act.val ? renderHTML`<span class="font-bold text-gray-900 tabular-nums">${act.val} đ</span>` : '')}
+                        <div class="flex items-center justify-between gap-1.5 leading-tight">
+                            <span class="font-semibold text-gray-900 text-[12.5px] truncate">${act.title}</span>
+                            ${trustedHTML(act.val ? renderHTML`<span class="font-bold text-[#0066cc] text-[12px] tabular-nums whitespace-nowrap flex-shrink-0">${act.val} đ</span>` : '')}
                         </div>
-                        <div class="text-[11px] text-gray-400 mt-0.5">${act.time}</div>
+                        <div class="text-[12px] text-gray-600 leading-snug mt-0.5 break-words line-clamp-2">
+                            ${act.action}
+                        </div>
+                        <div class="text-[10.5px] text-gray-400 mt-1 flex items-center gap-1 font-normal">
+                            <svg class="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2"/></svg>
+                            <span class="truncate">${act.time || ''}</span>
+                        </div>
                     </div>
                 `;
                 actContainer.appendChild(div);

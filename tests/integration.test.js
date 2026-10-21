@@ -353,3 +353,50 @@ test('product codes synchronize across all branches when created or when new bra
         b.close();
     }
 });
+
+test('editing a created branch updates branch information and persists', async () => {
+    const b = browser();
+    try {
+        await login(b);
+
+        // 1. Create a new branch
+        b.w.openAddBranchModal();
+        setValue(b.w, 'branch-code-input', 'CN_HP');
+        setValue(b.w, 'branch-name-input', 'Chi nhánh Hải Phòng');
+        setValue(b.w, 'branch-phone-input', '0912345678');
+        setValue(b.w, 'branch-address-input', '12 Lạch Tray, Hải Phòng');
+        setValue(b.w, 'branch-note-input', 'Chi nhánh mới tạo');
+        await b.w.saveBranchFromModal({ preventDefault() {} });
+
+        let hpBranch = db.getAllData().branches.find((br) => br.code === 'CN_HP');
+        assert.ok(hpBranch);
+        assert.equal(hpBranch.name, 'Chi nhánh Hải Phòng');
+        assert.equal(hpBranch.phone, '0912345678');
+        assert.equal(hpBranch.address, '12 Lạch Tray, Hải Phòng');
+
+        // 2. Edit the created branch
+        b.w.openEditBranchModal('CN_HP');
+        assert.equal(b.w.document.getElementById('branch-edit-id').value, 'CN_HP');
+        assert.equal(b.w.document.getElementById('branch-name-input').value, 'Chi nhánh Hải Phòng');
+        setValue(b.w, 'branch-name-input', 'Chi nhánh Hải Phòng - Lê Chân');
+        setValue(b.w, 'branch-phone-input', '0988776655');
+        setValue(b.w, 'branch-address-input', '99 Lê Chân, Hải Phòng');
+        setValue(b.w, 'branch-note-input', 'Đã cập nhật địa chỉ');
+        b.w.document.getElementById('branch-default-input').checked = true;
+        await b.w.saveBranchFromModal({ preventDefault() {} });
+
+        hpBranch = db.getAllData().branches.find((br) => br.code === 'CN_HP');
+        assert.ok(hpBranch);
+        assert.equal(hpBranch.name, 'Chi nhánh Hải Phòng - Lê Chân');
+        assert.equal(hpBranch.phone, '0988776655');
+        assert.equal(hpBranch.address, '99 Lê Chân, Hải Phòng');
+        assert.equal(hpBranch.note, 'Đã cập nhật địa chỉ');
+        assert.equal(hpBranch.isDefault, true);
+
+        // Other branches should not be default
+        const otherBranches = db.getAllData().branches.filter((br) => br.code !== 'CN_HP');
+        assert.ok(otherBranches.every((br) => !br.isDefault));
+    } finally {
+        b.close();
+    }
+});
