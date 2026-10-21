@@ -167,6 +167,36 @@ const fields = {
         'permissions'
     ]
 };
+const AMOUNT_FIELDS = [
+    'costPrice',
+    'price',
+    'stock',
+    'minStock',
+    'totalSpent',
+    'totalBought',
+    'debt',
+    'points'
+];
+const NON_STRING_FIELDS = [
+    ...AMOUNT_FIELDS,
+    'hasImei',
+    'isDefault',
+    'permissions',
+    'branches',
+    'imeis'
+];
+function productHasHistory(data, product) {
+    const branch = branchOf(product),
+        hasCode = (doc) => doc.items.some((item) => item.code === product.code);
+    return (
+        ['invoices', 'imports', 'returns', 'stocktakes'].some((table) =>
+            data[table].some((doc) => branchOf(doc) === branch && hasCode(doc))
+        ) ||
+        data.transfers.some(
+            (doc) => (doc.fromBranch === branch || doc.toBranch === branch) && hasCode(doc)
+        )
+    );
+}
 function validateRecord(table, row, data, old, user) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) fail('Bản ghi không hợp lệ.');
     if (typeof row.id !== 'string' || !/^[A-Za-z0-9_.:-]{1,160}$/.test(row.id))
@@ -181,25 +211,7 @@ function validateRecord(table, row, data, old, user) {
     if (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 500)
         fail('Tên không hợp lệ.');
     for (const [key, value] of Object.entries(row)) {
-        if (
-            ![
-                'costPrice',
-                'price',
-                'stock',
-                'minStock',
-                'totalSpent',
-                'totalBought',
-                'debt',
-                'points',
-                'hasImei',
-                'isDefault',
-                'permissions',
-                'branches',
-                'imeis'
-            ].includes(key) &&
-            value != null &&
-            typeof value !== 'string'
-        )
+        if (!NON_STRING_FIELDS.includes(key) && value != null && typeof value !== 'string')
             fail(`Trường ${key} phải là chuỗi.`);
         if (typeof value === 'string' && value.length > 5000) fail(`Trường ${key} quá dài.`);
         if (
@@ -209,17 +221,7 @@ function validateRecord(table, row, data, old, user) {
         )
             fail(`Trường ${key} không đúng kiểu.`);
     }
-    for (const key of [
-        'costPrice',
-        'price',
-        'stock',
-        'minStock',
-        'totalSpent',
-        'totalBought',
-        'debt',
-        'points'
-    ])
-        if (key in row) amount(row[key], key);
+    for (const key of AMOUNT_FIELDS) if (key in row) amount(row[key], key);
     if (
         !old &&
         ['customers', 'suppliers'].includes(table) &&
@@ -246,23 +248,7 @@ function validateRecord(table, row, data, old, user) {
             fail('Danh sách IMEI không hợp lệ.');
         if (row.hasImei && row.imeis.length !== row.stock)
             fail('Tồn kho phải bằng số IMEI. Nhập hàng có IMEI qua phiếu nhập.');
-        if (
-            old &&
-            row.hasImei !== old.hasImei &&
-            (old.stock ||
-                ['invoices', 'imports', 'returns', 'stocktakes'].some((t) =>
-                    data[t].some(
-                        (d) =>
-                            branchOf(d) === branchOf(old) &&
-                            d.items.some((i) => i.code === old.code)
-                    )
-                ) ||
-                data.transfers.some(
-                    (t) =>
-                        (t.fromBranch === branchOf(old) || t.toBranch === branchOf(old)) &&
-                        t.items.some((i) => i.code === old.code)
-                ))
-        )
+        if (old && row.hasImei !== old.hasImei && (old.stock || productHasHistory(data, old)))
             fail('Không thể đổi cách quản lý IMEI khi còn tồn kho hoặc lịch sử chứng từ.');
         const otherSerials = new Set(
             data.products.filter((p) => p.id !== row.id).flatMap((p) => p.imeis || [])
@@ -424,22 +410,7 @@ function applyEdit(data, user, incoming) {
                 (old.debt || data.imports.some((i) => i.nccCode === old.code))
             )
                 fail('Nhà cung cấp còn công nợ/lịch sử không thể xóa.');
-            if (
-                table === 'products' &&
-                (old.stock ||
-                    ['invoices', 'imports', 'returns', 'stocktakes'].some((t) =>
-                        data[t].some(
-                            (i) =>
-                                branchOf(i) === branchOf(old) &&
-                                i.items.some((it) => it.code === old.code)
-                        )
-                    ) ||
-                    data.transfers.some(
-                        (t) =>
-                            (t.fromBranch === branchOf(old) || t.toBranch === branchOf(old)) &&
-                            t.items.some((it) => it.code === old.code)
-                    ))
-            )
+            if (table === 'products' && (old.stock || productHasHistory(data, old)))
                 fail('Sản phẩm còn tồn/lịch sử không thể xóa.');
         }
         data[table] = data[table]
