@@ -1,4 +1,4 @@
-// KiotViet WebApp - Main Logic Controller
+// NKiot WebApp - Main Logic Controller
 let state = {
     currentView: 'dashboard',
     activePosTab: 0,
@@ -2195,7 +2195,7 @@ function renderVietQR(amount, imgId, descId) {
     const bankAccount = s.bankAccount || '0000000000';
     const bankOwner = s.bankOwner || 'MINIKIOT';
     const bankName = s.bankName || 'Ngân hàng';
-    const addInfo = `KiotViet_${Date.now().toString().slice(-6)}`;
+    const addInfo = `NKiot_${Date.now().toString().slice(-6)}`;
     const qrUrl = `https://api.vietqr.io/image/${bankCode}-${bankAccount}-compact.jpg?amount=${amount}&addInfo=${encodeURIComponent(addInfo)}&accountName=${encodeURIComponent(bankOwner)}`;
 
     if (imgEl) imgEl.src = qrUrl;
@@ -5008,7 +5008,7 @@ function renderAppLogo() {
 
     const logoUrl = (s.logoUrl || '').trim();
     const logoText =
-        s.logoText !== undefined && s.logoText !== null ? String(s.logoText).trim() : 'KiotViet';
+        s.logoText !== undefined && s.logoText !== null ? String(s.logoText).trim() : 'NKiot';
 
     if (logoUrl) {
         if (imgEl) {
@@ -5100,7 +5100,7 @@ function updateSettingsLogoPreview() {
     if (!previewSvg || !previewImg || !previewText) return;
 
     const url = (urlInput?.value || '').trim();
-    const text = textInput ? textInput.value : 'KiotViet';
+    const text = textInput ? textInput.value : 'NKiot';
 
     if (url) {
         previewImg.src = url;
@@ -5163,7 +5163,7 @@ function resetSettingsLogoToDefault() {
     const urlInput = document.getElementById('set-logo-url');
     const textInput = document.getElementById('set-logo-text');
     if (urlInput) urlInput.value = '';
-    if (textInput) textInput.value = 'KiotViet';
+    if (textInput) textInput.value = 'NKiot';
     updateSettingsLogoPreview();
 }
 
@@ -5185,7 +5185,7 @@ function openSettingsModal() {
     const logoUrlEl = document.getElementById('set-logo-url');
     if (logoUrlEl) logoUrlEl.value = s.logoUrl || '';
     const logoTextEl = document.getElementById('set-logo-text');
-    if (logoTextEl) logoTextEl.value = s.logoText !== undefined ? s.logoText : 'KiotViet';
+    if (logoTextEl) logoTextEl.value = s.logoText !== undefined ? s.logoText : 'NKiot';
 
     updateSettingsLogoPreview();
     modal.classList.remove('hidden');

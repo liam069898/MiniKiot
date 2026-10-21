@@ -253,7 +253,7 @@ function initDb() {
             );
             d.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(
                 'logoText',
-                '"KiotViet"'
+                '"NKiot"'
             );
         } catch {}
         if (isNew) {

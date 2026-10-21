@@ -38,7 +38,7 @@ function loadClientStore(initialData) {
     return ctx;
 }
 
-test('frontend makeCode generates KiotViet auto-increment numbers for default data', () => {
+test('frontend makeCode generates NKiot auto-increment numbers for default data', () => {
     const ctx = loadClientStore(defaultData);
     const { makeCode, KVStore } = ctx;
 
@@ -104,7 +104,7 @@ test('shared generator treats a row code and ID as occupied values', () => {
     );
 });
 
-test('backend domain commands generate KiotViet auto-increment numbers', () => {
+test('backend domain commands generate NKiot auto-increment numbers', () => {
     const data = JSON.parse(JSON.stringify(defaultData));
     const user = { ...defaultData.users[0], status: 'active' };
 
