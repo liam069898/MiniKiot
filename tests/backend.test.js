@@ -120,6 +120,57 @@ beforeEach(() => {
     admin = db.getAllData().users[0];
 });
 after(() => db.getDb().close());
+test('POS accepts an authorized custom sale price while retaining list-price validation', () => {
+    const data = db.getAllData();
+    data.products[0].price = 0;
+    data.users[0].permissions.posPrice = true;
+    db.saveAllData(data);
+    admin = db.getAllData().users[0];
+
+    const invoice = sell({
+        items: [{ code: 'SP', qty: 1, expectedPrice: 0, salePrice: 100000 }],
+        given: 100000
+    });
+    assert.equal(invoice.items[0].price, 100000);
+    assert.equal(invoice.total, 100000);
+});
+test('POS rejects custom sale price without posPrice permission', () => {
+    const data = db.getAllData();
+    const cashier = {
+        ...admin,
+        id: 'CASHIER',
+        code: 'CASHIER',
+        username: 'cashier',
+        role: 'cashier',
+        branch: 'A',
+        branches: ['A'],
+        permissions: { pos: true }
+    };
+    data.users.push(cashier);
+    db.saveAllData(data);
+    assert.throws(
+        () =>
+            command(
+                'sale',
+                {
+                    branch: 'A',
+                    items: [{ code: 'SP', qty: 1, expectedPrice: 100000, salePrice: 90000 }],
+                    given: 90000,
+                    paymentMethod: 'cash'
+                },
+                app.revision(),
+                crypto.randomUUID(),
+                cashier
+            ),
+        { message: 'Bạn không có quyền thực hiện thao tác này.', status: 403 }
+    );
+});
+test('POS still rejects stale list price when custom sale price is supplied', () => {
+    assert.throws(
+        () => sell({ items: [{ code: 'SP', qty: 1, expectedPrice: 0, salePrice: 100000 }] }),
+        { message: 'Giá bán đã thay đổi. Hãy cập nhật sản phẩm trong giỏ.', status: 409 }
+    );
+});
 test('empty catalog survives restart and passwords are migrated', () => {
     const d = db.getAllData();
     d.products = [];

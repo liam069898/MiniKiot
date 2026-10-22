@@ -1536,6 +1536,7 @@ function renderPosScreen() {
                                    oninput="handlePosPriceInput(this)"
                                    onblur="setPosItemPrice('${item.code}', this.value)"
                                    onkeydown="if(event.key === 'Enter') { this.blur(); }"
+                                   ${hasPermission('posPrice') ? '' : 'readonly'}
                                    class="pos-price-input w-20 sm:w-24 text-right font-bold ${isBelowCost ? 'text-red-600' : 'text-gray-800'} bg-transparent focus:outline-none text-[12.5px] tabular-nums">
                             <span class="pos-price-unit text-[11px] ${isBelowCost ? 'text-red-500 font-bold' : 'text-gray-500 font-medium'}">đ</span>
                         </div>
@@ -2523,6 +2524,7 @@ function addPosCartItem(product, specificImei = null) {
             code: product.code,
             name: product.name,
             price: product.price,
+            listPrice: product.price,
             costPrice: product.costPrice != null ? product.costPrice : 0,
             stock: product.stock,
             qty: 1,
@@ -2585,6 +2587,11 @@ function setPosItemPrice(code, val) {
     if (!curTab) return;
     const item = curTab.cart.find((i) => i.code === code);
     if (!item) return;
+    if (!hasPermission('posPrice')) {
+        showToast('Bạn không có quyền sửa giá bán tại POS.', 'warning');
+        renderPosScreen();
+        return;
+    }
 
     const cleaned = String(val ?? '').replace(/[^0-9]/g, '');
     let num = cleaned ? parseInt(cleaned, 10) : 0;
@@ -2953,7 +2960,8 @@ async function checkoutPos() {
             items: tab.cart.map((i) => ({
                 code: i.code,
                 qty: i.qty,
-                expectedPrice: i.price,
+                expectedPrice: i.listPrice ?? i.price,
+                salePrice: i.price,
                 imeis:
                     i.hasImei && Array.isArray(i.selectedImeis) && i.selectedImeis.length === i.qty
                         ? i.selectedImeis
@@ -7409,6 +7417,7 @@ const ROLE_PRESETS = {
         permissions: {
             dashboard: true,
             pos: true,
+            posPrice: true,
             invoices: true,
             products: true,
             stocktakes: true,
@@ -7427,6 +7436,7 @@ const ROLE_PRESETS = {
         permissions: {
             dashboard: true,
             pos: true,
+            posPrice: true,
             invoices: true,
             products: true,
             stocktakes: true,
@@ -7445,6 +7455,7 @@ const ROLE_PRESETS = {
         permissions: {
             dashboard: true,
             pos: true,
+            posPrice: false,
             invoices: true,
             products: true,
             stocktakes: false,
@@ -7463,6 +7474,7 @@ const ROLE_PRESETS = {
         permissions: {
             dashboard: true,
             pos: false,
+            posPrice: false,
             invoices: false,
             products: true,
             stocktakes: true,
@@ -7951,6 +7963,7 @@ function openStaffFormModal(staffId = null) {
         [
             'dashboard',
             'pos',
+            'posPrice',
             'invoices',
             'products',
             'stocktakes',
@@ -7997,6 +8010,7 @@ function onRolePresetChange(role) {
     [
         'dashboard',
         'pos',
+        'posPrice',
         'invoices',
         'products',
         'stocktakes',
@@ -8047,6 +8061,7 @@ async function saveStaffSubmit(e) {
     [
         'dashboard',
         'pos',
+        'posPrice',
         'invoices',
         'products',
         'stocktakes',

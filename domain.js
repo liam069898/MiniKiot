@@ -160,8 +160,10 @@ function sale(data, user, input) {
             fail('Giá bán đã thay đổi. Hãy cập nhật sản phẩm trong giỏ.', 409);
         if (p.status !== 'active') fail('Sản phẩm đã ngừng kinh doanh.');
         const qty = quantity(row.qty),
-            price = amount(p.price),
+            hasCustomPrice = row.salePrice !== undefined && row.salePrice !== p.price,
+            price = hasCustomPrice ? amount(row.salePrice) : amount(p.price),
             costPrice = amount(p.costPrice);
+        if (hasCustomPrice) requirePermission(user, 'posPrice');
         return {
             code: p.code,
             productId: p.id,
