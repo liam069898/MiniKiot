@@ -1215,55 +1215,127 @@ function renderDashboard() {
     const actContainer = document.getElementById('dash-recent-activities');
     if (actContainer) {
         actContainer.innerHTML = '';
-        const activities = [];
-        const branchInvs = (data.invoices || []).filter(
-            (i) => isAll || (i.branch || FALLBACK_BRANCH) === currentBranch
-        );
-        const branchImps = (data.imports || []).filter(
-            (imp) => isAll || (imp.branch || FALLBACK_BRANCH) === currentBranch
-        );
+        let activities = [];
 
-        branchInvs.slice(0, 5).forEach((inv) => {
-            activities.push({
-                type: 'sale',
-                title: inv.cashier || 'Thu ngân',
-                action: 'vừa bán đơn hàng',
-                val: formatVND(inv.total),
-                time: inv.time
-            });
-        });
-        branchImps.slice(0, 3).forEach((imp) => {
-            activities.push({
-                type: 'import',
-                title: imp.creator || 'Quản lý kho',
-                action: 'vừa nhập hàng',
-                val: formatVND(imp.needPay),
-                time: imp.time
-            });
-        });
-
-        (data.recentActivities || [])
-            .filter(
+        if (Array.isArray(data.recentActivities) && data.recentActivities.length > 0) {
+            activities = data.recentActivities.filter(
                 (a) =>
                     isAll ||
+                    !a.branch ||
                     a.branch === currentBranch ||
                     (a.text && a.text.includes(currentBranch))
-            )
-            .slice(0, 3)
-            .forEach((act) => {
+            );
+        }
+
+        // If no recorded activities yet (e.g. initial setup or legacy data), synthesize from existing documents
+        if (activities.length === 0) {
+            const branchInvs = (data.invoices || []).filter(
+                (i) => isAll || (i.branch || FALLBACK_BRANCH) === currentBranch
+            );
+            const branchImps = (data.imports || []).filter(
+                (imp) => isAll || (imp.branch || FALLBACK_BRANCH) === currentBranch
+            );
+            const branchReturns = (data.returns || []).filter(
+                (r) => isAll || (r.branch || FALLBACK_BRANCH) === currentBranch
+            );
+            const branchCash = (data.cashbook || []).filter(
+                (c) => isAll || (c.branch || FALLBACK_BRANCH) === currentBranch
+            );
+            const branchTransfers = (data.transfers || []).filter(
+                (t) => isAll || t.fromBranch === currentBranch || t.toBranch === currentBranch
+            );
+            const branchStocktakes = (data.stocktakes || []).filter(
+                (s) => isAll || (s.branch || FALLBACK_BRANCH) === currentBranch
+            );
+
+            branchInvs.slice(0, 15).forEach((inv) => {
                 activities.push({
-                    type: 'stock',
-                    title: 'Hệ thống',
-                    action: act.text,
-                    val: '',
-                    time: act.time
+                    type: 'sale',
+                    title: inv.cashier || 'Thu ngân',
+                    action: `Vừa bán đơn hàng ${inv.code}${inv.customer && inv.customer !== 'Khách lẻ' ? ` cho ${inv.customer}` : ''}`,
+                    val: inv.total,
+                    branch: inv.branch,
+                    time: inv.time,
+                    createdAt: inv.createdAt
+                });
+            });
+            branchReturns.slice(0, 10).forEach((ret) => {
+                activities.push({
+                    type: 'return',
+                    title: ret.cashier || 'Thu ngân',
+                    action: `Trả hàng đơn ${ret.invoiceCode || ''} (${ret.code})`,
+                    val: ret.totalRefund ? -ret.totalRefund : 0,
+                    branch: ret.branch,
+                    time: ret.time,
+                    createdAt: ret.createdAt
+                });
+            });
+            branchImps.slice(0, 10).forEach((imp) => {
+                activities.push({
+                    type: 'import',
+                    title: imp.creator || 'Quản lý kho',
+                    action: `Nhập hàng ${imp.code}${imp.nccName ? ` từ ${imp.nccName}` : ''}`,
+                    val: imp.needPay,
+                    branch: imp.branch,
+                    time: imp.time,
+                    createdAt: imp.createdAt
+                });
+            });
+            branchCash.slice(0, 10).forEach((c) => {
+                const isThu = c.type === 'thu';
+                activities.push({
+                    type: isThu ? 'cash_in' : 'cash_out',
+                    title: c.person || 'Thủ quỹ',
+                    action: `Phiếu ${isThu ? 'thu' : 'chi'} (${c.code}): ${c.category || c.note || ''}`,
+                    val: isThu ? c.amount : -c.amount,
+                    branch: c.branch,
+                    time: c.time,
+                    createdAt: c.createdAt
+                });
+            });
+            branchTransfers.slice(0, 5).forEach((tf) => {
+                activities.push({
+                    type: 'transfer',
+                    title: tf.cashier || 'Quản lý kho',
+                    action: `Chuyển hàng ${tf.code} từ ${tf.fromBranch} sang ${tf.toBranch}`,
+                    val: tf.totalValue,
+                    branch: tf.fromBranch,
+                    time: tf.time,
+                    createdAt: tf.createdAt
+                });
+            });
+            branchStocktakes.slice(0, 5).forEach((st) => {
+                activities.push({
+                    type: 'stocktake',
+                    title: st.cashier || 'Kiểm kho',
+                    action:
+                        st.status === 'balanced'
+                            ? `Cân bằng kho ${st.code}`
+                            : `Lưu tạm kiểm kho ${st.code}`,
+                    val:
+                        st.totalVariance !== 0
+                            ? `${st.totalVariance > 0 ? '+' : ''}${st.totalVariance} SL`
+                            : '',
+                    branch: st.branch,
+                    time: st.time,
+                    createdAt: st.createdAt
                 });
             });
 
-        if (activities.length === 0) {
+            activities.sort((a, b) => {
+                const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
+                const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
+                return tb - ta;
+            });
+        }
+
+        // Limit display to top 50 items
+        const displayActivities = activities.slice(0, 50);
+
+        if (displayActivities.length === 0) {
             actContainer.innerHTML = renderHTML`<div class="text-gray-400 py-6 text-center text-[12.5px]">Chưa có hoạt động nào tại ${currentBranch}</div>`;
         } else {
-            activities.forEach((act) => {
+            displayActivities.forEach((act) => {
                 const div = document.createElement('div');
                 div.className =
                     'flex items-start gap-2.5 p-2 rounded-xl hover:bg-white/70 transition border border-transparent hover:border-gray-100/80';
@@ -1271,32 +1343,77 @@ function renderDashboard() {
                 let iconBadge;
                 if (act.type === 'import') {
                     iconBadge = trustedHTML(
-                        '<div class="w-8 h-8 rounded-xl bg-emerald-50/90 border border-emerald-200/60 text-emerald-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">📦</div>'
+                        '<div class="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200/60 text-emerald-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">📦</div>'
                     );
-                } else if (act.type === 'stock') {
+                } else if (act.type === 'stock' || act.type === 'stocktake') {
                     iconBadge = trustedHTML(
-                        '<div class="w-8 h-8 rounded-xl bg-purple-50/90 border border-purple-200/60 text-purple-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">📋</div>'
+                        '<div class="w-8 h-8 rounded-xl bg-purple-50 border border-purple-200/60 text-purple-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">📋</div>'
+                    );
+                } else if (
+                    act.type === 'return' ||
+                    act.type === 'cancel' ||
+                    act.type === 'cancel_import'
+                ) {
+                    iconBadge = trustedHTML(
+                        '<div class="w-8 h-8 rounded-xl bg-rose-50 border border-rose-200/60 text-rose-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">↩️</div>'
+                    );
+                } else if (act.type === 'transfer' || act.type === 'receive') {
+                    iconBadge = trustedHTML(
+                        '<div class="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200/60 text-amber-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">🚚</div>'
+                    );
+                } else if (
+                    act.type === 'debt' ||
+                    act.type === 'cash_in' ||
+                    act.type === 'cash_out'
+                ) {
+                    iconBadge = trustedHTML(
+                        '<div class="w-8 h-8 rounded-xl bg-teal-50 border border-teal-200/60 text-teal-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">💰</div>'
+                    );
+                } else if (act.type === 'edit') {
+                    iconBadge = trustedHTML(
+                        '<div class="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200/60 text-indigo-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">⚙️</div>'
                     );
                 } else {
                     iconBadge = trustedHTML(
-                        '<div class="w-8 h-8 rounded-xl bg-blue-50/90 border border-blue-200/60 text-blue-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">🛒</div>'
+                        '<div class="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200/60 text-blue-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">🛒</div>'
                     );
                 }
+
+                let valHtml = trustedHTML('');
+                if (act.val !== '' && act.val != null) {
+                    const num = Number(act.val);
+                    if (!isNaN(num) && act.val !== '') {
+                        if (num < 0) {
+                            valHtml = renderHTML`<span class="font-bold text-rose-600 text-[12px] tabular-nums whitespace-nowrap flex-shrink-0">-${formatVND(Math.abs(num))} đ</span>`;
+                        } else if (num > 0) {
+                            valHtml = renderHTML`<span class="font-bold text-[#0066cc] text-[12px] tabular-nums whitespace-nowrap flex-shrink-0">${formatVND(num)} đ</span>`;
+                        }
+                    } else if (typeof act.val === 'string' && act.val.trim()) {
+                        const isNeg = act.val.startsWith('-');
+                        const cls = isNeg ? 'text-rose-600' : 'text-[#0066cc]';
+                        valHtml = renderHTML`<span class="font-bold ${cls} text-[12px] tabular-nums whitespace-nowrap flex-shrink-0">${escapeHTML(act.val)}</span>`;
+                    }
+                }
+
+                const timeBranchHtml = renderHTML`
+                    <div class="text-[10.5px] text-gray-400 mt-1 flex items-center gap-1.5 font-normal">
+                        <svg class="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2"/></svg>
+                        <span class="truncate">${act.time || ''}</span>
+                        ${trustedHTML(isAll && act.branch ? renderHTML`<span class="text-gray-300">•</span><span class="text-gray-500 font-medium truncate">${act.branch}</span>` : '')}
+                    </div>
+                `;
 
                 div.innerHTML = renderHTML`
                     ${iconBadge}
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center justify-between gap-1.5 leading-tight">
-                            <span class="font-semibold text-gray-900 text-[12.5px] truncate">${act.title}</span>
-                            ${trustedHTML(act.val ? renderHTML`<span class="font-bold text-[#0066cc] text-[12px] tabular-nums whitespace-nowrap flex-shrink-0">${act.val} đ</span>` : '')}
+                            <span class="font-semibold text-gray-900 text-[12.5px] truncate">${act.title || 'Hệ thống'}</span>
+                            ${valHtml}
                         </div>
                         <div class="text-[12px] text-gray-600 leading-snug mt-0.5 break-words line-clamp-2">
                             ${act.action}
                         </div>
-                        <div class="text-[10.5px] text-gray-400 mt-1 flex items-center gap-1 font-normal">
-                            <svg class="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2"/></svg>
-                            <span class="truncate">${act.time || ''}</span>
-                        </div>
+                        ${timeBranchHtml}
                     </div>
                 `;
                 actContainer.appendChild(div);
@@ -1469,28 +1586,20 @@ function renderPosScreen() {
                 : trustedHTML('');
 
             let selectedImeisHtml = trustedHTML('');
-            if (item.hasImei) {
-                if (imeiCount > 0) {
-                    selectedImeisHtml = renderHTML`
-                        <div class="flex flex-wrap items-center gap-1 mt-1 text-[11px] font-mono">
-                            <span class="text-gray-500 font-sans text-[10.5px] font-medium">IMEI:</span>
-                            ${trustedHTML(
-                                item.selectedImeis
-                                    .map(
-                                        (im) =>
-                                            `<span class="inline-flex items-center px-1.5 py-0.2 rounded bg-blue-50 text-[#0066cc] border border-blue-200/80 text-[10.5px] font-semibold font-mono tracking-tight">${escapeHTML(im)}</span>`
-                                    )
-                                    .join('')
-                            )}
-                        </div>
-                    `;
-                } else {
-                    selectedImeisHtml = renderHTML`
-                        <div class="mt-1 text-[11px] text-amber-700 font-medium flex items-center space-x-1">
-                            <span>⚠️ Chưa chọn IMEI (Bắt buộc chọn thủ công)</span>
-                        </div>
-                    `;
-                }
+            if (item.hasImei && imeiCount > 0) {
+                selectedImeisHtml = renderHTML`
+                    <div class="flex flex-wrap items-center gap-1 mt-1 text-[11px] font-mono">
+                        <span class="text-gray-500 font-sans text-[10.5px] font-medium">IMEI:</span>
+                        ${trustedHTML(
+                            item.selectedImeis
+                                .map(
+                                    (im) =>
+                                        `<span class="inline-flex items-center px-1.5 py-0.2 rounded bg-blue-50 text-[#0066cc] border border-blue-200/80 text-[10.5px] font-semibold font-mono tracking-tight">${escapeHTML(im)}</span>`
+                                )
+                                .join('')
+                        )}
+                    </div>
+                `;
             }
 
             const row = document.createElement('div');
@@ -1646,7 +1755,7 @@ function renderPosScreen() {
             changeEl.textContent = formatVND(change);
             changeEl.className = 'font-bold text-green-600 tabular-nums';
         } else {
-            changeEl.textContent = `Thiếu ${formatVND(Math.abs(change))}`;
+            changeEl.textContent = `-${formatVND(Math.abs(change))}`;
             changeEl.className = 'font-bold text-red-500 tabular-nums';
         }
     }
@@ -2912,11 +3021,12 @@ async function checkoutPos() {
         throw new Error('Giỏ hàng trống.');
     }
 
-    // Strict manual IMEI validation: never allow auto-selection
+    // Strict manual IMEI validation: must select IMEI before creating order
     const isTestEnv =
         typeof navigator !== 'undefined' &&
         navigator.userAgent &&
-        navigator.userAgent.includes('jsdom');
+        navigator.userAgent.includes('jsdom') &&
+        !window._testEnforceManualImei;
     for (const item of tab.cart) {
         if (item.hasImei) {
             const count = Array.isArray(item.selectedImeis) ? item.selectedImeis.length : 0;
@@ -2924,11 +3034,11 @@ async function checkoutPos() {
                 if (!isTestEnv) {
                     playBeep('error');
                     showToast(
-                        `Sản phẩm "${item.name}" chưa chọn đủ IMEI (${count}/${item.qty}). Vui lòng chọn thủ công trước khi thanh toán!`,
+                        `Sản phẩm "${item.name}" chưa chọn đủ IMEI (${count}/${item.qty}). Vui lòng chọn IMEI trước khi thanh toán!`,
                         'warning'
                     );
                     openPosImeiSelector(item.code);
-                    throw new Error(`Sản phẩm "${item.name}" chưa chọn đủ IMEI thủ công.`);
+                    throw new Error(`Sản phẩm "${item.name}" chưa chọn đủ IMEI.`);
                 }
             }
         }

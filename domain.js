@@ -52,6 +52,31 @@ const methodLabel = (method) =>
     ({ cash: 'Tiền mặt', transfer: 'Chuyển khoản', card: 'Thẻ', multi: 'Nhiều hình thức' })[
         method
     ] || method;
+function recordActivity(
+    data,
+    { id, type, title, action, val = '', branch = null, time = null, createdAt = null }
+) {
+    if (!data) return;
+    if (!Array.isArray(data.recentActivities)) {
+        data.recentActivities = [];
+    }
+    const ts = timestamp();
+    const actId = id || `act_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    data.recentActivities.unshift({
+        id: actId,
+        type,
+        title: title || 'Hệ thống',
+        action: action || '',
+        val: val !== '' && val != null ? String(val) : '',
+        branch: branch || null,
+        time: time || ts.time,
+        createdAt: createdAt || ts.createdAt
+    });
+    if (data.recentActivities.length > 200) {
+        data.recentActivities.length = 200;
+    }
+}
+
 function voucher(
     data,
     {
@@ -921,28 +946,150 @@ function execute(data, user, type, input) {
         }
     }
     switch (type) {
-        case 'sale':
-            return sale(data, user, input);
-        case 'return':
-            return returnGoods(data, user, input);
-        case 'cancel':
-            return returnGoods(data, user, input, true);
-        case 'import':
-            return importGoods(data, user, input);
-        case 'cancel_import':
-            return cancelImport(data, user, input);
-        case 'debt':
-            return payDebt(data, user, input);
-        case 'cash':
-            return cashEntry(data, user, input);
-        case 'transfer':
-            return transfer(data, user, input);
-        case 'receive':
-            return receive(data, user, input);
-        case 'stocktake':
-            return stocktake(data, user, input);
+        case 'sale': {
+            const inv = sale(data, user, input);
+            recordActivity(data, {
+                type: 'sale',
+                title: user.name || inv.cashier || 'Thu ngân',
+                action: `Vừa bán đơn hàng ${inv.code}${inv.customer && inv.customer !== 'Khách lẻ' ? ` cho ${inv.customer}` : ''}`,
+                val: inv.total,
+                branch: inv.branch,
+                time: inv.time,
+                createdAt: inv.createdAt
+            });
+            return inv;
+        }
+        case 'return': {
+            const ret = returnGoods(data, user, input);
+            recordActivity(data, {
+                type: 'return',
+                title: user.name || ret.cashier || 'Thu ngân',
+                action: `Trả hàng đơn ${ret.invoiceCode || ''} (${ret.code})`,
+                val: ret.totalRefund ? -ret.totalRefund : 0,
+                branch: ret.branch,
+                time: ret.time,
+                createdAt: ret.createdAt
+            });
+            return ret;
+        }
+        case 'cancel': {
+            const can = returnGoods(data, user, input, true);
+            recordActivity(data, {
+                type: 'cancel',
+                title: user.name || can.cashier || 'Thu ngân',
+                action: `Hủy đơn hàng ${can.invoiceCode || can.code}${can.reason ? `: ${can.reason}` : ''}`,
+                val: can.totalRefund ? -can.totalRefund : 0,
+                branch: can.branch,
+                time: can.time,
+                createdAt: can.createdAt
+            });
+            return can;
+        }
+        case 'import': {
+            const imp = importGoods(data, user, input);
+            recordActivity(data, {
+                type: 'import',
+                title: user.name || imp.creator || 'Quản lý kho',
+                action: `Nhập hàng ${imp.code}${imp.nccName ? ` từ ${imp.nccName}` : ''}`,
+                val: imp.needPay,
+                branch: imp.branch,
+                time: imp.time,
+                createdAt: imp.createdAt
+            });
+            return imp;
+        }
+        case 'cancel_import': {
+            const cImp = cancelImport(data, user, input);
+            recordActivity(data, {
+                type: 'cancel_import',
+                title: user.name || 'Quản lý kho',
+                action: `Hủy phiếu nhập ${cImp.code}${cImp.cancelReason ? `: ${cImp.cancelReason}` : ''}`,
+                val: cImp.needPay ? -cImp.needPay : 0,
+                branch: cImp.branch,
+                time: cImp.cancelTime || cImp.time,
+                createdAt: cImp.cancelledAt || cImp.createdAt
+            });
+            return cImp;
+        }
+        case 'debt': {
+            const res = payDebt(data, user, input);
+            const isCust = input.type === 'thu';
+            const partner = (isCust ? data.customers : data.suppliers).find(
+                (x) => x.id === input.partnerId || x.code === input.partnerId
+            );
+            const pName = partner ? partner.name : isCust ? 'Khách hàng' : 'Nhà cung cấp';
+            recordActivity(data, {
+                type: 'debt',
+                title: user.name || 'Thu ngân',
+                action: isCust ? `Thu nợ ${pName}` : `Chi trả nợ ${pName}`,
+                val: isCust ? res.amount : -res.amount,
+                branch: input.branch || branchOf(user),
+                time: timestamp().time,
+                createdAt: timestamp().createdAt
+            });
+            return res;
+        }
+        case 'cash': {
+            const entry = cashEntry(data, user, input);
+            const isThu = entry.type === 'thu';
+            recordActivity(data, {
+                type: isThu ? 'cash_in' : 'cash_out',
+                title: user.name || 'Thủ quỹ',
+                action: `Lập phiếu ${isThu ? 'thu' : 'chi'} (${entry.code}): ${entry.category || entry.note || ''}`,
+                val: isThu ? entry.amount : -entry.amount,
+                branch: entry.branch,
+                time: entry.time,
+                createdAt: entry.createdAt
+            });
+            return entry;
+        }
+        case 'transfer': {
+            const tf = transfer(data, user, input);
+            recordActivity(data, {
+                type: 'transfer',
+                title: user.name || tf.cashier || 'Quản lý kho',
+                action: `Chuyển hàng ${tf.code} từ ${tf.fromBranch} sang ${tf.toBranch} (${tf.totalQty} món)`,
+                val: tf.totalValue,
+                branch: tf.fromBranch,
+                time: tf.time,
+                createdAt: tf.createdAt
+            });
+            return tf;
+        }
+        case 'receive': {
+            const rc = receive(data, user, input);
+            recordActivity(data, {
+                type: 'receive',
+                title: user.name || rc.receiver || 'Quản lý kho',
+                action: `Nhận hàng chuyển kho ${rc.code} tại ${rc.toBranch}`,
+                val: rc.totalValue,
+                branch: rc.toBranch,
+                time: rc.receivedTime || rc.time,
+                createdAt: rc.createdAt
+            });
+            return rc;
+        }
+        case 'stocktake': {
+            const st = stocktake(data, user, input);
+            recordActivity(data, {
+                type: 'stocktake',
+                title: user.name || st.cashier || 'Kiểm kho',
+                action:
+                    st.status === 'balanced'
+                        ? `Cân bằng kho ${st.code} (${st.branch})`
+                        : `Lưu tạm kiểm kho ${st.code} (${st.branch})`,
+                val:
+                    st.totalVariance !== 0
+                        ? `${st.totalVariance > 0 ? '+' : ''}${st.totalVariance} SL`
+                        : '',
+                branch: st.branch,
+                time: st.time,
+                createdAt: st.createdAt
+            });
+            return st;
+        }
         default:
             fail('Thao tác không hợp lệ.', 400);
     }
 }
-module.exports = { execute, amount, fail, branchOf };
+module.exports = { execute, amount, fail, branchOf, recordActivity };

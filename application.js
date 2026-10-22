@@ -2,7 +2,7 @@
 const crypto = require('node:crypto');
 const db = require('./db');
 const { can, allowedBranches, publicUser, requirePermission, hashPassword } = require('./security');
-const { execute, fail, amount, branchOf } = require('./domain');
+const { execute, fail, amount, branchOf, recordActivity } = require('./domain');
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // Idempotency records must outlive any realistic offline/pending reconciliation window.
 const PROCESSED_REQUEST_RETENTION_MS = 30 * 86400000;
@@ -42,7 +42,9 @@ function project(data, user) {
     }
     result.users = result.users.map(publicUser);
     // Branch directory is needed to select destinations; inventory is still scoped above.
-    result.recentActivities = (data.recentActivities || []).filter((r) => branches.has(r.branch));
+    result.recentActivities = (data.recentActivities || []).filter(
+        (r) => !r.branch || branches.has(r.branch) || r.branch === 'Toàn bộ chi nhánh'
+    );
     return result;
 }
 // Delta between two projected views, so a command response only carries rows that changed.
@@ -411,7 +413,8 @@ function applyEdit(data, user, incoming) {
     const oldBranchIds = new Set(data.branches.map((row) => row.id));
     for (const table of db.ENTITY_TABLES) {
         if (!Array.isArray(incoming[table])) fail(`Thiếu danh sách ${table}.`);
-        if (equal(visible[table], incoming[table])) continue;
+        const incomingCmp = table === 'users' ? incoming[table].map(publicUser) : incoming[table];
+        if (equal(visible[table], incomingCmp)) continue;
         if (!editable[table])
             fail(`Chứng từ ${table} phải được cập nhật qua nghiệp vụ riêng.`, 403);
         requirePermission(user, editable[table]);
@@ -429,7 +432,9 @@ function applyEdit(data, user, incoming) {
             const old = oldMap.get(row.id);
             if (old && !visibleIds.has(row.id)) fail('Không được sửa dữ liệu ngoài phạm vi.', 403);
             const before = visible[table].find((r) => r.id === row.id);
-            if (!equal(row, before)) validateRecord(table, row, data, old, user);
+            const rowCmp = table === 'users' ? publicUser(row) : row;
+            const beforeCmp = table === 'users' && before ? publicUser(before) : before;
+            if (!equal(rowCmp, beforeCmp)) validateRecord(table, row, data, old, user);
         }
         for (const old of visible[table].filter((r) => !ids.has(r.id))) {
             if (
@@ -459,6 +464,35 @@ function applyEdit(data, user, incoming) {
             if (table === 'products' && (old.stock || productHasHistory(data, old)))
                 fail('Sản phẩm còn tồn/lịch sử không thể xóa.');
         }
+        for (const row of rows) {
+            const before = visible[table].find((r) => r.id === row.id);
+            const rowCmp = table === 'users' ? publicUser(row) : row;
+            const beforeCmp = table === 'users' && before ? publicUser(before) : before;
+            if (!before) {
+                recordActivity(data, {
+                    type: 'edit',
+                    title: user.name || 'Quản lý',
+                    action: `Thêm ${table === 'products' ? 'hàng hóa' : table === 'customers' ? 'khách hàng' : table === 'suppliers' ? 'nhà cung cấp' : table === 'users' ? 'nhân viên' : table === 'branches' ? 'chi nhánh' : 'danh mục'}: ${row.name || row.code}`,
+                    branch: table === 'products' ? branchOf(row) : row.branch || null
+                });
+            } else if (!equal(rowCmp, beforeCmp)) {
+                recordActivity(data, {
+                    type: 'edit',
+                    title: user.name || 'Quản lý',
+                    action: `Cập nhật ${table === 'products' ? 'hàng hóa' : table === 'customers' ? 'khách hàng' : table === 'suppliers' ? 'nhà cung cấp' : table === 'users' ? 'nhân viên' : table === 'branches' ? 'chi nhánh' : 'danh mục'}: ${row.name || row.code}`,
+                    branch: table === 'products' ? branchOf(row) : row.branch || null
+                });
+            }
+        }
+        for (const old of visible[table].filter((r) => !ids.has(r.id))) {
+            recordActivity(data, {
+                type: 'edit',
+                title: user.name || 'Quản lý',
+                action: `Xóa ${table === 'products' ? 'hàng hóa' : table === 'customers' ? 'khách hàng' : table === 'suppliers' ? 'nhà cung cấp' : table === 'users' ? 'nhân viên' : table === 'branches' ? 'chi nhánh' : 'danh mục'}: ${old.name || old.code}`,
+                branch: table === 'products' ? branchOf(old) : old.branch || null
+            });
+        }
+
         data[table] = data[table]
             .filter((r) => !visibleIds.has(r.id))
             .concat(
@@ -501,6 +535,11 @@ function applyEdit(data, user, incoming) {
         if (Object.keys(data.settings).some((k) => !Object.hasOwn(incoming.settings, k)))
             fail('Thiếu trường cài đặt.');
         data.settings = incoming.settings;
+        recordActivity(data, {
+            type: 'edit',
+            title: user.name || 'Quản trị viên',
+            action: 'Cập nhật thiết lập cửa hàng'
+        });
     }
     const serials = new Set(
         data.transfers

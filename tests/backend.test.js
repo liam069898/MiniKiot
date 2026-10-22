@@ -1309,3 +1309,56 @@ test('multi-method sale splits payments across transfer, cash and card and books
     resetData.products.find((p) => p.code === prod.code).price = oldPrice;
     db.saveAllData(resetData);
 });
+
+test('all user operations record activity logs in recentActivities across commands and catalog edits', () => {
+    // 1. Cash entry records activity
+    command('cash', {
+        type: 'thu',
+        category: 'Thu tiền dịch vụ',
+        amount: 250000,
+        person: 'Khách hàng VIP',
+        branch: 'A',
+        method: 'cash'
+    });
+    let d = db.getAllData();
+    assert.ok(d.recentActivities && d.recentActivities.length > 0);
+    const cashAct = d.recentActivities[0];
+    assert.equal(cashAct.type, 'cash_in');
+    assert.equal(cashAct.val, '250000');
+    assert.ok(cashAct.action.includes('Lập phiếu thu'));
+    assert.equal(cashAct.branch, 'A');
+
+    // 2. Catalog edit records activity
+    const newProd = {
+        id: 'SP_TEST_AUDIT',
+        code: 'SP_TEST_AUDIT',
+        name: 'Sản phẩm Test Audit Log',
+        category: 'Test',
+        costPrice: 100000,
+        price: 150000,
+        stock: 0,
+        minStock: 1,
+        unit: 'Chiếc',
+        status: 'active',
+        barcode: '893000999',
+        branch: 'A',
+        hasImei: false,
+        imeis: []
+    };
+    const incomingData = {
+        ...d,
+        products: [newProd, ...d.products]
+    };
+    command('edit', incomingData);
+
+    d = db.getAllData();
+    const editAct = d.recentActivities[0];
+    assert.equal(editAct.type, 'edit');
+    assert.ok(editAct.action.includes('Thêm hàng hóa'));
+    assert.ok(editAct.action.includes('Sản phẩm Test Audit Log'));
+    assert.equal(editAct.branch, 'A');
+
+    // Clean up test product
+    incomingData.products = d.products.filter((p) => p.id !== 'SP_TEST_AUDIT');
+    command('edit', incomingData);
+});

@@ -777,3 +777,106 @@ test('POS multi-method payment splits tender, computes debt/change and checks ou
         dom.window.close();
     }
 });
+
+test('POS displays negative change with minus sign, removes warning line, and requires selecting IMEI to checkout', async () => {
+    const dom = browser(),
+        w = dom.window;
+    try {
+        w.eval(`
+            window.commanded = null;
+            KVStore.command = async (cmd, payload) => {
+                window.commanded = { cmd, payload };
+                return { code: 'HD0100', items: payload.items };
+            };
+        `);
+
+        w.switchView('pos');
+        // Find product with IMEI
+        const imeiProd = w.eval('KVStore.data.products.find(p => p.hasImei && p.stock > 0)');
+        assert.ok(imeiProd, 'Must have at least one product with IMEI and stock');
+        w.addPosCartItem(imeiProd);
+
+        // 1. Verify cart item does NOT have the warning line "Chưa chọn IMEI (Bắt buộc chọn thủ công)"
+        const cartHtml = w.document.getElementById('pos-cart-list').innerHTML;
+        assert.ok(!cartHtml.includes('Chưa chọn IMEI (Bắt buộc chọn thủ công)'));
+
+        // 2. Customer pays 30.000 for total > 30.000 -> change starts with '-' and has no 'Thiếu'
+        w.setPosCustomerGiven(30000);
+        const changeEl = w.document.getElementById('pos-change');
+        assert.ok(changeEl.textContent.startsWith('-'));
+        assert.ok(!changeEl.textContent.includes('Thiếu'));
+
+        // 3. Checkout without selecting IMEI is blocked: returns undefined, no sale command sent
+        w.eval('window._testEnforceManualImei = true');
+        const blockedInvoice = await w.checkoutPos();
+        assert.equal(blockedInvoice, undefined);
+        assert.equal(w.eval('window.commanded'), null);
+
+        // 4. Select IMEI and checkout succeeds
+        const curTab = w.eval('state.posTabs[state.activePosTab]');
+        curTab.cart[0].selectedImeis = [imeiProd.imeis[0]];
+        const invoice = await w.checkoutPos();
+        assert.ok(invoice);
+        assert.equal(w.eval('window.commanded.cmd'), 'sale');
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Dashboard renders rich recent activities stream with badges, actions, amounts and branch scope', () => {
+    const dom = browser(),
+        w = dom.window;
+    try {
+        w.eval(`
+            KVStore.data.recentActivities = [
+                {
+                    id: 'act_1',
+                    type: 'sale',
+                    title: 'Trần Văn Nhất',
+                    action: 'Vừa bán đơn hàng HD0010 cho Khách VIP',
+                    val: 1500000,
+                    branch: 'Kalo HCM',
+                    time: '22/10/2026 16:30'
+                },
+                {
+                    id: 'act_2',
+                    type: 'return',
+                    title: 'Trần Văn Nhất',
+                    action: 'Trả hàng đơn HD0009',
+                    val: -300000,
+                    branch: 'Kalo HCM',
+                    time: '22/10/2026 16:25'
+                },
+                {
+                    id: 'act_3',
+                    type: 'edit',
+                    title: 'Quản lý',
+                    action: 'Thêm hàng hóa mới: Apple Watch Ultra',
+                    val: '',
+                    branch: 'Kalo HCM',
+                    time: '22/10/2026 16:20'
+                }
+            ];
+            renderDashboard();
+        `);
+
+        const actContainer = w.document.getElementById('dash-recent-activities');
+        assert.ok(actContainer);
+        const text = actContainer.textContent;
+        assert.ok(text.includes('Vừa bán đơn hàng HD0010'));
+        assert.ok(text.includes('1.500.000 đ'));
+        assert.ok(text.includes('Trả hàng đơn HD0009'));
+        assert.ok(text.includes('-300.000 đ'));
+        assert.ok(text.includes('Thêm hàng hóa mới: Apple Watch Ultra'));
+
+        // Test in Toàn bộ chi nhánh: branch name appears in activity item
+        w.eval(`
+            KVStore.data.settings.branch = ALL_BRANCHES;
+            renderDashboard();
+        `);
+        const allText = w.document.getElementById('dash-recent-activities').textContent;
+        assert.ok(allText.includes('Kalo HCM'));
+    } finally {
+        dom.window.close();
+    }
+});
