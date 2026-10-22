@@ -49,7 +49,9 @@ function paymentMethod(method) {
     return method;
 }
 const methodLabel = (method) =>
-    ({ cash: 'Tiền mặt', transfer: 'Chuyển khoản', card: 'Thẻ' })[method] || method;
+    ({ cash: 'Tiền mặt', transfer: 'Chuyển khoản', card: 'Thẻ', multi: 'Nhiều hình thức' })[
+        method
+    ] || method;
 function voucher(
     data,
     {
@@ -194,17 +196,78 @@ function sale(data, user, input) {
     const cust = input.customerId ? data.customers.find((c) => c.id === input.customerId) : null;
     if (input.customerId && !cust) fail('Khách hàng không tồn tại.');
     const retail = !cust || cust.code === RETAIL_CUSTOMER_CODE;
-    const given = amount(input.given),
+
+    let finalPayments = [];
+    let paid = 0;
+
+    if (Array.isArray(input.payments) && input.payments.length > 0) {
+        const rawPayments = [];
+        for (const p of input.payments) {
+            if (!p || typeof p !== 'object') continue;
+            const m = paymentMethod(p.method);
+            const a = amount(p.amount ?? p.value ?? 0);
+            if (a > 0) rawPayments.push({ method: m, amount: a });
+        }
+        const totalGiven = rawPayments.reduce((s, p) => s + p.amount, 0);
+        paid = Math.min(totalGiven, total);
+
+        if (paid > 0) {
+            let remainingPaid = paid;
+            const nonCash = rawPayments.filter((p) => p.method !== 'cash');
+            const cashList = rawPayments.filter((p) => p.method === 'cash');
+            const sorted = [...nonCash, ...cashList];
+
+            for (const p of sorted) {
+                if (remainingPaid <= 0) break;
+                const alloc = Math.min(p.amount, remainingPaid);
+                if (alloc > 0) {
+                    finalPayments.push({
+                        amount: alloc,
+                        method: p.method,
+                        ...timestamp()
+                    });
+                    remainingPaid -= alloc;
+                }
+            }
+        } else {
+            finalPayments = [
+                {
+                    amount: 0,
+                    method: rawPayments[0]?.method || 'cash',
+                    ...timestamp()
+                }
+            ];
+        }
+    } else {
+        const given = amount(input.given ?? 0);
         paid = Math.min(given, total);
+        const method = paymentMethod(input.paymentMethod || 'cash');
+        finalPayments = [
+            {
+                amount: paid,
+                method,
+                ...timestamp()
+            }
+        ];
+    }
+
     if (retail && paid < total) fail('Khách lẻ chưa trả đủ tiền. Hãy chọn khách hàng để ghi nợ.');
-    const method = paymentMethod(input.paymentMethod),
-        id = code(data, 'HD');
+
+    const distinctMethods = new Set(finalPayments.filter((p) => p.amount > 0).map((p) => p.method));
+    const invoicePaymentMethod =
+        distinctMethods.size > 1
+            ? 'multi'
+            : distinctMethods.size === 1
+              ? Array.from(distinctMethods)[0]
+              : finalPayments[0]?.method || 'cash';
+
+    const id = code(data, 'HD');
     const invoice = {
         id,
         code: id,
         ...timestamp(),
         bookingVersion: 2,
-        payments: [{ amount: paid, method, ...timestamp() }],
+        payments: finalPayments,
         customerId: retail ? null : cust.id,
         customer: cust?.name || 'Khách lẻ',
         phone: cust?.phone || 'Tại quầy',
@@ -218,7 +281,7 @@ function sale(data, user, input) {
         status: 'completed',
         cashier: user.name,
         branch: br,
-        paymentMethod: method,
+        paymentMethod: invoicePaymentMethod,
         note: input.note || ''
     };
     data.invoices.unshift(invoice);
@@ -227,17 +290,35 @@ function sale(data, user, input) {
         cust.totalSpent = amount(cust.totalSpent + total);
         cust.points = amount(cust.points + Math.floor(total / 100000));
     }
-    voucher(data, {
-        type: 'thu',
-        category: 'Bán hàng',
-        value: paid,
-        person: invoice.customer,
-        method,
-        branch: br,
-        invoiceId: id,
-        customerId: invoice.customerId,
-        note: `Thu tiền bán hàng hóa đơn ${id}`
-    });
+    if (finalPayments.length > 1) {
+        for (const p of finalPayments) {
+            if (p.amount > 0) {
+                voucher(data, {
+                    type: 'thu',
+                    category: 'Bán hàng',
+                    value: p.amount,
+                    person: invoice.customer,
+                    method: p.method,
+                    branch: br,
+                    invoiceId: id,
+                    customerId: invoice.customerId,
+                    note: `Thu tiền bán hàng (${methodLabel(p.method).toLowerCase()}) hóa đơn ${id}`
+                });
+            }
+        }
+    } else {
+        voucher(data, {
+            type: 'thu',
+            category: 'Bán hàng',
+            value: paid,
+            person: invoice.customer,
+            method: finalPayments[0]?.method || 'cash',
+            branch: br,
+            invoiceId: id,
+            customerId: invoice.customerId,
+            note: `Thu tiền bán hàng hóa đơn ${id}`
+        });
+    }
     return invoice;
 }
 function previousReturns(data, inv) {
@@ -322,17 +403,20 @@ function returnGoods(data, user, input, cancel = false) {
                     Math.floor((inv.total - already - value) / 100000))
         );
     }
+    const fallbackMethod = ['cash', 'transfer', 'card'].includes(inv.paymentMethod)
+        ? inv.paymentMethod
+        : 'cash';
     if (Array.isArray(inv.payments) && refund)
         inv.payments.push({
             amount: -refund,
-            method: input.refundMethod || inv.paymentMethod || 'cash',
+            method: input.refundMethod || fallbackMethod,
             ...timestamp()
         });
     inv.paid = Math.max(0, inv.paid - refund);
     inv.returnedTotal = already + value;
     inv.hasReturned = !!(previous.length || items.length);
     inv.redPaid = inv.total - inv.returnedTotal > inv.paid;
-    const method = paymentMethod(input.refundMethod || inv.paymentMethod || 'cash'),
+    const method = paymentMethod(input.refundMethod || fallbackMethod),
         id = code(data, 'TH');
     const slip = {
         id,
@@ -481,7 +565,7 @@ function cancelImport(data, user, input) {
     const touchesImport = (doc) =>
         doc !== imp &&
         typeof doc.createdAt === 'string' &&
-        doc.createdAt >= imp.createdAt &&
+        doc.createdAt > imp.createdAt &&
         (doc.items || []).some((row) => importedCodes.has(row.code));
     if (
         ['invoices', 'imports', 'returns', 'stocktakes'].some((table) =>

@@ -11,6 +11,7 @@ let state = {
             discount: 0,
             paymentMethod: 'cash',
             customerGiven: 0,
+            multiPayments: { transfer: 0, cash: 0, card: 0 },
             note: '',
             mode: 'fast'
         }
@@ -1649,6 +1650,29 @@ function renderPosScreen() {
         }
     }
 
+    // Sync payment method buttons & containers
+    const curMethod = curTab.paymentMethod || 'cash';
+    document.querySelectorAll('.pos-paymethod-btn').forEach((btn) => {
+        btn.classList.remove('bg-white', 'text-[#0066cc]', 'font-bold', 'shadow-sm');
+        btn.classList.add('text-gray-600', 'font-medium');
+    });
+    const targetMethodBtn = document.getElementById(`paymethod-${curMethod}`);
+    if (targetMethodBtn) {
+        targetMethodBtn.classList.add('bg-white', 'text-[#0066cc]', 'font-bold', 'shadow-sm');
+        targetMethodBtn.classList.remove('text-gray-600', 'font-medium');
+    }
+
+    const singlePayContainer = document.getElementById('pos-single-pay-container');
+    const multiPayContainer = document.getElementById('pos-multi-pay-panel');
+    if (curMethod === 'multi') {
+        if (singlePayContainer) singlePayContainer.classList.add('hidden');
+        if (multiPayContainer) multiPayContainer.classList.remove('hidden');
+        renderPosMultiPaymentPanel();
+    } else {
+        if (singlePayContainer) singlePayContainer.classList.remove('hidden');
+        if (multiPayContainer) multiPayContainer.classList.add('hidden');
+    }
+
     // Render smart denominations based on grand total
     renderSmartDenominations(grandTotal);
 
@@ -2199,6 +2223,7 @@ function addPosNewTab() {
         discountPercent: 0,
         paymentMethod: 'cash',
         customerGiven: 0,
+        multiPayments: { transfer: 0, cash: 0, card: 0 },
         note: '',
         mode: 'fast'
     });
@@ -2698,25 +2723,161 @@ function setPosCustomerGiven(amount) {
 
 function setPosPaymentMethod(method) {
     const curTab = state.posTabs[state.activePosTab];
+    if (!curTab) return;
     curTab.paymentMethod = method;
+    if (!curTab.multiPayments) {
+        curTab.multiPayments = { transfer: 0, cash: 0, card: 0 };
+    }
+
+    const sub = curTab.cart.reduce((a, c) => a + c.qty * c.price, 0);
+    const grand = Math.max(0, sub - (curTab.discount || 0));
+
     document.querySelectorAll('.pos-paymethod-btn').forEach((btn) => {
-        btn.classList.remove('bg-blue-50', 'text-[#0066cc]', 'border-[#0066cc]', 'font-bold');
-        btn.classList.add('border-gray-200', 'text-gray-700');
+        btn.classList.remove('bg-white', 'text-[#0066cc]', 'font-bold', 'shadow-sm');
+        btn.classList.add('text-gray-600', 'font-medium');
     });
     const target = document.getElementById(`paymethod-${method}`);
     if (target) {
-        target.classList.add('bg-blue-50', 'text-[#0066cc]', 'border-[#0066cc]', 'font-bold');
-        target.classList.remove('border-gray-200', 'text-gray-700');
+        target.classList.add('bg-white', 'text-[#0066cc]', 'font-bold', 'shadow-sm');
+        target.classList.remove('text-gray-600', 'font-medium');
+    }
+
+    const singleContainer = document.getElementById('pos-single-pay-container');
+    const multiContainer = document.getElementById('pos-multi-pay-panel');
+    const qrBox = document.getElementById('pos-vietqr-container');
+
+    if (method === 'multi') {
+        if (singleContainer) singleContainer.classList.add('hidden');
+        if (multiContainer) multiContainer.classList.remove('hidden');
+
+        const currentSum =
+            (curTab.multiPayments.transfer || 0) +
+            (curTab.multiPayments.cash || 0) +
+            (curTab.multiPayments.card || 0);
+        if (currentSum === 0 && grand > 0) {
+            curTab.multiPayments.cash = grand;
+        }
+        renderPosMultiPaymentPanel();
+    } else {
+        if (singleContainer) singleContainer.classList.remove('hidden');
+        if (multiContainer) multiContainer.classList.add('hidden');
+
+        if (method === 'transfer') {
+            renderVietQR(grand, 'pos-vietqr-img', 'pos-vietqr-desc');
+            if (qrBox) qrBox.classList.remove('hidden');
+        } else {
+            if (qrBox) qrBox.classList.add('hidden');
+        }
+    }
+}
+
+function handleMultiPaymentInput(method, val) {
+    const curTab = state.posTabs[state.activePosTab];
+    if (!curTab) return;
+    if (!curTab.multiPayments) curTab.multiPayments = { transfer: 0, cash: 0, card: 0 };
+    const raw = parseInt((val || '0').replace(/\D/g, ''), 10) || 0;
+    curTab.multiPayments[method] = raw;
+    renderPosMultiPaymentPanel();
+}
+
+function fillMultiPaymentRemainder(method) {
+    const curTab = state.posTabs[state.activePosTab];
+    if (!curTab) return;
+    if (!curTab.multiPayments) curTab.multiPayments = { transfer: 0, cash: 0, card: 0 };
+    const sub = curTab.cart.reduce((a, c) => a + c.qty * c.price, 0);
+    const grand = Math.max(0, sub - (curTab.discount || 0));
+
+    let otherTotal = 0;
+    for (const m of ['transfer', 'cash', 'card']) {
+        if (m !== method) {
+            otherTotal += curTab.multiPayments[m] || 0;
+        }
+    }
+    curTab.multiPayments[method] = Math.max(0, grand - otherTotal);
+    renderPosMultiPaymentPanel();
+}
+
+function clearMultiPayment(method) {
+    const curTab = state.posTabs[state.activePosTab];
+    if (!curTab) return;
+    if (!curTab.multiPayments) curTab.multiPayments = { transfer: 0, cash: 0, card: 0 };
+    curTab.multiPayments[method] = 0;
+    renderPosMultiPaymentPanel();
+}
+
+function renderPosMultiPaymentPanel() {
+    const curTab = state.posTabs[state.activePosTab];
+    if (!curTab) return;
+    if (!curTab.multiPayments) curTab.multiPayments = { transfer: 0, cash: 0, card: 0 };
+
+    const sub = curTab.cart.reduce((a, c) => a + c.qty * c.price, 0);
+    const grand = Math.max(0, sub - (curTab.discount || 0));
+
+    const transferInput = document.getElementById('pos-multi-pay-transfer');
+    const cashInput = document.getElementById('pos-multi-pay-cash');
+    const cardInput = document.getElementById('pos-multi-pay-card');
+
+    if (transferInput && document.activeElement !== transferInput) {
+        transferInput.value =
+            curTab.multiPayments.transfer > 0 ? formatVND(curTab.multiPayments.transfer) : '';
+    }
+    if (cashInput && document.activeElement !== cashInput) {
+        cashInput.value = curTab.multiPayments.cash > 0 ? formatVND(curTab.multiPayments.cash) : '';
+    }
+    if (cardInput && document.activeElement !== cardInput) {
+        cardInput.value = curTab.multiPayments.card > 0 ? formatVND(curTab.multiPayments.card) : '';
+    }
+
+    const totalPaid =
+        (curTab.multiPayments.transfer || 0) +
+        (curTab.multiPayments.cash || 0) +
+        (curTab.multiPayments.card || 0);
+    curTab.customerGiven = totalPaid;
+
+    const totalPaidEl = document.getElementById('pos-multi-total-paid');
+    if (totalPaidEl) totalPaidEl.textContent = `${formatVND(totalPaid)} đ`;
+
+    const summaryEl = document.getElementById('pos-multi-summary');
+    const diff = grand - totalPaid;
+
+    if (summaryEl) {
+        const isRetail = !curTab.customer || curTab.customer.code === RETAIL_CUSTOMER_CODE;
+        if (diff > 0) {
+            summaryEl.innerHTML = renderHTML`
+                <div class="flex items-center justify-between text-[12px] bg-red-50/80 border border-red-200/80 rounded-xl px-2.5 py-1.5 text-red-700">
+                    <span class="font-medium">Ghi nợ:</span>
+                    <span class="font-bold font-mono text-[13px] text-red-600">${formatVND(diff)} đ</span>
+                </div>
+                ${trustedHTML(
+                    isRetail
+                        ? renderHTML`<div class="text-[11px] text-amber-700 mt-1 flex items-center space-x-1 font-medium"><span>⚠️ Khách lẻ không thể ghi nợ. Chọn khách hàng để tiếp tục.</span></div>`
+                        : renderHTML`<div class="text-[11px] text-emerald-700 mt-1 flex items-center space-x-1 font-medium"><span>✓ Nợ sẽ được cộng vào khách: <strong>${curTab.customer.name}</strong></span></div>`
+                )}
+            `;
+        } else if (diff < 0) {
+            summaryEl.innerHTML = renderHTML`
+                <div class="flex items-center justify-between text-[12px] bg-green-50/80 border border-green-200/80 rounded-xl px-2.5 py-1.5 text-green-700">
+                    <span class="font-medium">Tiền thừa trả khách:</span>
+                    <span class="font-bold font-mono text-[13px] text-green-700">${formatVND(Math.abs(diff))} đ</span>
+                </div>
+            `;
+        } else {
+            summaryEl.innerHTML = renderHTML`
+                <div class="flex items-center justify-center text-[11.5px] bg-emerald-50/80 border border-emerald-200/80 rounded-xl py-1 text-emerald-700 font-bold">
+                    ✓ Đã thanh toán đúng tổng tiền
+                </div>
+            `;
+        }
     }
 
     const qrBox = document.getElementById('pos-vietqr-container');
-    if (method === 'transfer') {
-        const sub = curTab.cart.reduce((a, c) => a + c.qty * c.price, 0);
-        const grand = Math.max(0, sub - (curTab.discount || 0));
-        renderVietQR(grand, 'pos-vietqr-img', 'pos-vietqr-desc');
-        if (qrBox) qrBox.classList.remove('hidden');
-    } else {
-        if (qrBox) qrBox.classList.add('hidden');
+    if (curTab.paymentMethod === 'multi') {
+        if (curTab.multiPayments.transfer > 0) {
+            renderVietQR(curTab.multiPayments.transfer, 'pos-vietqr-img', 'pos-vietqr-desc');
+            if (qrBox) qrBox.classList.remove('hidden');
+        } else {
+            if (qrBox) qrBox.classList.add('hidden');
+        }
     }
 }
 
@@ -2774,6 +2935,19 @@ async function checkoutPos() {
     }
 
     try {
+        let paymentsPayload = undefined;
+        let givenAmount = tab.customerGiven || 0;
+
+        if (tab.paymentMethod === 'multi') {
+            const mp = tab.multiPayments || {};
+            paymentsPayload = [
+                { method: 'transfer', amount: mp.transfer || 0 },
+                { method: 'cash', amount: mp.cash || 0 },
+                { method: 'card', amount: mp.card || 0 }
+            ].filter((p) => p.amount > 0);
+            givenAmount = paymentsPayload.reduce((s, p) => s + p.amount, 0);
+        }
+
         const invoice = await KVStore.command('sale', {
             branch: tab.branch || getCurrentBranch(),
             items: tab.cart.map((i) => ({
@@ -2788,8 +2962,9 @@ async function checkoutPos() {
             })),
             customerId: tab.customer?.id || null,
             discount: tab.discount || 0,
-            given: tab.customerGiven || 0,
+            given: givenAmount,
             paymentMethod: tab.paymentMethod,
+            payments: paymentsPayload,
             note: tab.note || document.getElementById('pos-order-note')?.value || ''
         });
         tab.cart = [];
@@ -2797,6 +2972,8 @@ async function checkoutPos() {
         tab.discount = 0;
         tab.discountPercent = 0;
         tab.customerGiven = 0;
+        tab.multiPayments = { transfer: 0, cash: 0, card: 0 };
+        tab.paymentMethod = 'cash';
         tab.note = '';
         delete tab.branch;
         const noteEl = document.getElementById('pos-order-note');
@@ -2828,16 +3005,73 @@ async function checkoutPos() {
 // ==========================================
 
 const DEFAULT_BILL_CONFIG = {
-    paperSize: 'k80',
+    paperSize: 'k80', // 'k80' | 'k58' | 'a4'
+    fontSize: 'standard', // 'compact' | 'standard' | 'large'
+    fontFamily: 'monospace', // 'monospace' | 'sans'
     title: 'HÓA ĐƠN BÁN HÀNG',
+    slogan: '',
+    customStoreName: '',
+    customAddress: '',
+    customPhone: '',
+    customTaxCode: '',
     footer: 'Cảm ơn Quý khách & Hẹn gặp lại!',
+    policy: 'Quý khách vui lòng kiểm tra hàng trước khi rời quầy.',
     showLogo: true,
     showStore: true,
     showCustomer: true,
+    showCustomerAddress: true,
+    showCustomerPoints: true,
+    showCustomerDebt: true,
     showCashier: true,
+    showStt: true,
+    showItemCode: false,
+    showItemUnit: false,
     showNote: true,
     showImei: true,
-    showQr: true
+    showDiscount: true,
+    showPaymentDetails: true,
+    showChange: true,
+    showQr: true,
+    qrSize: 'medium', // 'small' | 'medium' | 'large'
+    showSignatures: false
+};
+
+const SAMPLE_MOCK_INVOICE = {
+    code: 'HD261022-0001',
+    time: '22/10/2026 11:30',
+    customer: 'Anh Hoàng Long',
+    customerPhone: '0988.123.456',
+    customerAddress: '45 Lê Duẩn, P. Bến Nghé, Q.1, TP.HCM',
+    customerPoints: 150,
+    customerOldDebt: 500000,
+    cashier: 'Trần Văn Nhất',
+    items: [
+        {
+            code: 'IP15PM',
+            name: 'iPhone 15 Pro Max 256GB Titan Tự Nhiên',
+            unit: 'Chiếc',
+            qty: 1,
+            price: 28500000,
+            imeis: ['356789123456789'],
+            note: 'Bảo hành chính hãng 12 tháng'
+        },
+        {
+            code: 'AD20W',
+            name: 'Củ sạc Apple 20W Type-C Chính Hãng',
+            unit: 'Bộ',
+            qty: 2,
+            price: 450000,
+            note: 'Bảo hành 6 tháng 1 đổi 1'
+        }
+    ],
+    total: 29400000,
+    discount: 400000,
+    paid: 20000000,
+    payments: [
+        { method: 'transfer', amount: 15000000 },
+        { method: 'cash', amount: 5000000 }
+    ],
+    paymentMethod: 'multi'
 };
 
 function getBillConfig() {
@@ -2846,8 +3080,9 @@ function getBillConfig() {
     return { ...DEFAULT_BILL_CONFIG, ...stored };
 }
 
-function applyReceiptPaperSize(size) {
+function applyReceiptPaperSize(size, fontSize = 'standard', fontFamily = 'monospace') {
     const isK58 = size === 'k58';
+    const isA4 = size === 'a4';
     const btnK80 = document.getElementById('receipt-btn-k80');
     const btnK58 = document.getElementById('receipt-btn-k58');
     const printable = document.getElementById('printable-receipt');
@@ -2866,15 +3101,30 @@ function applyReceiptPaperSize(size) {
         }
     }
     if (printable) {
-        printable.dataset.paper = isK58 ? 'k58' : 'k80';
+        printable.dataset.paper = isK58 ? 'k58' : isA4 ? 'a4' : 'k80';
         if (isK58) {
             printable.style.maxWidth = '270px';
-            printable.style.fontSize = '11px';
-            printable.style.margin = '0 auto';
+        } else if (isA4) {
+            printable.style.maxWidth = '600px';
         } else {
             printable.style.maxWidth = '360px';
+        }
+        printable.style.margin = '0 auto';
+
+        if (fontSize === 'compact') {
+            printable.style.fontSize = '11px';
+        } else if (fontSize === 'large') {
+            printable.style.fontSize = '13.5px';
+        } else {
             printable.style.fontSize = '12px';
-            printable.style.margin = '0 auto';
+        }
+
+        if (fontFamily === 'sans') {
+            printable.style.fontFamily =
+                'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        } else {
+            printable.style.fontFamily =
+                'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
         }
     }
 }
@@ -2884,9 +3134,29 @@ function setReceiptPaperPreview(size) {
     cfg.paperSize = size;
     if (!KVStore.data.settings) KVStore.data.settings = {};
     KVStore.data.settings.billConfig = cfg;
-    applyReceiptPaperSize(size);
+    applyReceiptPaperSize(size, cfg.fontSize, cfg.fontFamily);
     if (state.currentReceiptInvoice) {
         renderReceiptContent(state.currentReceiptInvoice, cfg);
+    }
+}
+
+function switchBillCustomTab(tabName) {
+    document.querySelectorAll('.bill-tab-btn').forEach((btn) => {
+        btn.classList.remove('bg-white', 'text-[#0066cc]', 'font-bold', 'shadow-xs');
+        btn.classList.add('text-gray-600', 'font-medium', 'hover:text-gray-900');
+    });
+    document.querySelectorAll('.bill-tab-content').forEach((content) => {
+        content.classList.add('hidden');
+    });
+
+    const activeBtn = document.getElementById(`bill-tab-btn-${tabName}`);
+    const activeContent = document.getElementById(`bill-tab-content-${tabName}`);
+    if (activeBtn) {
+        activeBtn.classList.add('bg-white', 'text-[#0066cc]', 'font-bold', 'shadow-xs');
+        activeBtn.classList.remove('text-gray-600', 'font-medium', 'hover:text-gray-900');
+    }
+    if (activeContent) {
+        activeContent.classList.remove('hidden');
     }
 }
 
@@ -2897,31 +3167,54 @@ function openBillCustomModal() {
 
     const radK80 = document.getElementById('bill-opt-paper-k80');
     const radK58 = document.getElementById('bill-opt-paper-k58');
+    const radA4 = document.getElementById('bill-opt-paper-a4');
     if (radK80 && radK58) {
-        radK80.checked = cfg.paperSize !== 'k58';
+        radK80.checked = cfg.paperSize === 'k80' || (!radK58.checked && !radA4?.checked);
         radK58.checked = cfg.paperSize === 'k58';
+        if (radA4) radA4.checked = cfg.paperSize === 'a4';
     }
 
-    const titleInput = document.getElementById('bill-custom-title');
-    if (titleInput) titleInput.value = cfg.title || 'HÓA ĐƠN BÁN HÀNG';
-
-    const footerInput = document.getElementById('bill-custom-footer');
-    if (footerInput) footerInput.value = cfg.footer || 'Cảm ơn Quý khách & Hẹn gặp lại!';
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val ?? '';
+    };
+    setVal('bill-custom-title', cfg.title || 'HÓA ĐƠN BÁN HÀNG');
+    setVal('bill-custom-slogan', cfg.slogan || '');
+    setVal('bill-custom-store-name', cfg.customStoreName || '');
+    setVal('bill-custom-address', cfg.customAddress || '');
+    setVal('bill-custom-phone', cfg.customPhone || '');
+    setVal('bill-custom-tax-code', cfg.customTaxCode || '');
+    setVal('bill-custom-footer', cfg.footer || 'Cảm ơn Quý khách & Hẹn gặp lại!');
+    setVal('bill-custom-policy', cfg.policy || '');
+    setVal('bill-custom-font-size', cfg.fontSize || 'standard');
+    setVal('bill-custom-font-family', cfg.fontFamily || 'monospace');
+    setVal('bill-custom-qr-size', cfg.qrSize || 'medium');
 
     const setCb = (id, val) => {
         const el = document.getElementById(id);
         if (el) el.checked = Boolean(val);
     };
+    setCb('bill-custom-show-logo', cfg.showLogo !== false);
+    setCb('bill-custom-show-store', cfg.showStore !== false);
+    setCb('bill-custom-show-customer', cfg.showCustomer !== false);
+    setCb('bill-custom-show-cust-addr', cfg.showCustomerAddress !== false);
+    setCb('bill-custom-show-cust-points', cfg.showCustomerPoints !== false);
+    setCb('bill-custom-show-cust-debt', cfg.showCustomerDebt !== false);
+    setCb('bill-custom-show-cashier', cfg.showCashier !== false);
+    setCb('bill-custom-show-stt', cfg.showStt !== false);
+    setCb('bill-custom-show-item-code', Boolean(cfg.showItemCode));
+    setCb('bill-custom-show-item-unit', Boolean(cfg.showItemUnit));
+    setCb('bill-custom-show-note', cfg.showNote !== false);
+    setCb('bill-custom-show-imei', cfg.showImei !== false);
+    setCb('bill-custom-show-discount', cfg.showDiscount !== false);
+    setCb('bill-custom-show-payment-details', cfg.showPaymentDetails !== false);
+    setCb('bill-custom-show-change', cfg.showChange !== false);
+    setCb('bill-custom-show-qr', cfg.showQr !== false);
+    setCb('bill-custom-show-signatures', Boolean(cfg.showSignatures));
 
-    setCb('bill-custom-show-logo', cfg.showLogo);
-    setCb('bill-custom-show-store', cfg.showStore);
-    setCb('bill-custom-show-customer', cfg.showCustomer);
-    setCb('bill-custom-show-cashier', cfg.showCashier);
-    setCb('bill-custom-show-note', cfg.showNote);
-    setCb('bill-custom-show-imei', cfg.showImei);
-    setCb('bill-custom-show-qr', cfg.showQr);
-
-    updateBillPaperCardsUI(cfg.paperSize);
+    updateBillPaperCardsUI(cfg.paperSize || 'k80');
+    switchBillCustomTab('format');
+    renderBillLivePreview(cfg);
     modal.classList.remove('hidden');
 }
 
@@ -2932,54 +3225,82 @@ function closeBillCustomModal() {
 function updateBillPaperCardsUI(size) {
     const k80Card = document.getElementById('bill-opt-paper-k80-card');
     const k58Card = document.getElementById('bill-opt-paper-k58-card');
+    const a4Card = document.getElementById('bill-opt-paper-a4-card');
+    [k80Card, k58Card, a4Card].forEach((card) => {
+        card?.classList.remove('border-[#0066cc]', 'bg-blue-50/50', 'ring-1', 'ring-[#0066cc]/30');
+    });
     if (size === 'k58') {
         k58Card?.classList.add('border-[#0066cc]', 'bg-blue-50/50', 'ring-1', 'ring-[#0066cc]/30');
-        k80Card?.classList.remove(
-            'border-[#0066cc]',
-            'bg-blue-50/50',
-            'ring-1',
-            'ring-[#0066cc]/30'
-        );
+    } else if (size === 'a4') {
+        a4Card?.classList.add('border-[#0066cc]', 'bg-blue-50/50', 'ring-1', 'ring-[#0066cc]/30');
     } else {
         k80Card?.classList.add('border-[#0066cc]', 'bg-blue-50/50', 'ring-1', 'ring-[#0066cc]/30');
-        k58Card?.classList.remove(
-            'border-[#0066cc]',
-            'bg-blue-50/50',
-            'ring-1',
-            'ring-[#0066cc]/30'
-        );
     }
 }
 
 function readBillCustomModalValues() {
     const isK58 = document.getElementById('bill-opt-paper-k58')?.checked;
+    const isA4 = document.getElementById('bill-opt-paper-a4')?.checked;
+    let paperSize = 'k80';
+    if (isK58) paperSize = 'k58';
+    else if (isA4) paperSize = 'a4';
+
     return {
-        paperSize: isK58 ? 'k58' : 'k80',
+        paperSize,
+        fontSize: document.getElementById('bill-custom-font-size')?.value || 'standard',
+        fontFamily: document.getElementById('bill-custom-font-family')?.value || 'monospace',
         title:
             (document.getElementById('bill-custom-title')?.value || '').trim() ||
             'HÓA ĐƠN BÁN HÀNG',
+        slogan: (document.getElementById('bill-custom-slogan')?.value || '').trim(),
+        customStoreName: (document.getElementById('bill-custom-store-name')?.value || '').trim(),
+        customAddress: (document.getElementById('bill-custom-address')?.value || '').trim(),
+        customPhone: (document.getElementById('bill-custom-phone')?.value || '').trim(),
+        customTaxCode: (document.getElementById('bill-custom-tax-code')?.value || '').trim(),
         footer:
             (document.getElementById('bill-custom-footer')?.value || '').trim() ||
             'Cảm ơn Quý khách & Hẹn gặp lại!',
+        policy: (document.getElementById('bill-custom-policy')?.value || '').trim(),
         showLogo: Boolean(document.getElementById('bill-custom-show-logo')?.checked),
         showStore: Boolean(document.getElementById('bill-custom-show-store')?.checked),
         showCustomer: Boolean(document.getElementById('bill-custom-show-customer')?.checked),
+        showCustomerAddress: Boolean(
+            document.getElementById('bill-custom-show-cust-addr')?.checked
+        ),
+        showCustomerPoints: Boolean(
+            document.getElementById('bill-custom-show-cust-points')?.checked
+        ),
+        showCustomerDebt: Boolean(document.getElementById('bill-custom-show-cust-debt')?.checked),
         showCashier: Boolean(document.getElementById('bill-custom-show-cashier')?.checked),
+        showStt: Boolean(document.getElementById('bill-custom-show-stt')?.checked),
+        showItemCode: Boolean(document.getElementById('bill-custom-show-item-code')?.checked),
+        showItemUnit: Boolean(document.getElementById('bill-custom-show-item-unit')?.checked),
         showNote: Boolean(document.getElementById('bill-custom-show-note')?.checked),
         showImei: Boolean(document.getElementById('bill-custom-show-imei')?.checked),
-        showQr: Boolean(document.getElementById('bill-custom-show-qr')?.checked)
+        showDiscount: Boolean(document.getElementById('bill-custom-show-discount')?.checked),
+        showPaymentDetails: Boolean(
+            document.getElementById('bill-custom-show-payment-details')?.checked
+        ),
+        showChange: Boolean(document.getElementById('bill-custom-show-change')?.checked),
+        showQr: Boolean(document.getElementById('bill-custom-show-qr')?.checked),
+        qrSize: document.getElementById('bill-custom-qr-size')?.value || 'medium',
+        showSignatures: Boolean(document.getElementById('bill-custom-show-signatures')?.checked)
     };
 }
 
 function onBillConfigChange() {
     const isK58 = document.getElementById('bill-opt-paper-k58')?.checked;
-    updateBillPaperCardsUI(isK58 ? 'k58' : 'k80');
+    const isA4 = document.getElementById('bill-opt-paper-a4')?.checked;
+    const paperSize = isK58 ? 'k58' : isA4 ? 'a4' : 'k80';
+    updateBillPaperCardsUI(paperSize);
+
+    const liveCfg = readBillCustomModalValues();
+    renderBillLivePreview(liveCfg);
 
     if (
         state.currentReceiptInvoice &&
         !document.getElementById('receipt-modal')?.classList.contains('hidden')
     ) {
-        const liveCfg = readBillCustomModalValues();
         renderReceiptContent(state.currentReceiptInvoice, liveCfg);
     }
 }
@@ -3000,12 +3321,26 @@ function resetBillCustomConfig() {
     const def = { ...DEFAULT_BILL_CONFIG };
     const radK80 = document.getElementById('bill-opt-paper-k80');
     const radK58 = document.getElementById('bill-opt-paper-k58');
+    const radA4 = document.getElementById('bill-opt-paper-a4');
     if (radK80) radK80.checked = true;
     if (radK58) radK58.checked = false;
-    const titleInput = document.getElementById('bill-custom-title');
-    if (titleInput) titleInput.value = def.title;
-    const footerInput = document.getElementById('bill-custom-footer');
-    if (footerInput) footerInput.value = def.footer;
+    if (radA4) radA4.checked = false;
+
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val ?? '';
+    };
+    setVal('bill-custom-title', def.title);
+    setVal('bill-custom-slogan', def.slogan);
+    setVal('bill-custom-store-name', def.customStoreName);
+    setVal('bill-custom-address', def.customAddress);
+    setVal('bill-custom-phone', def.customPhone);
+    setVal('bill-custom-tax-code', def.customTaxCode);
+    setVal('bill-custom-footer', def.footer);
+    setVal('bill-custom-policy', def.policy);
+    setVal('bill-custom-font-size', def.fontSize);
+    setVal('bill-custom-font-family', def.fontFamily);
+    setVal('bill-custom-qr-size', def.qrSize);
 
     const setCb = (id, val) => {
         const el = document.getElementById(id);
@@ -3014,14 +3349,222 @@ function resetBillCustomConfig() {
     setCb('bill-custom-show-logo', def.showLogo);
     setCb('bill-custom-show-store', def.showStore);
     setCb('bill-custom-show-customer', def.showCustomer);
+    setCb('bill-custom-show-cust-addr', def.showCustomerAddress);
+    setCb('bill-custom-show-cust-points', def.showCustomerPoints);
+    setCb('bill-custom-show-cust-debt', def.showCustomerDebt);
     setCb('bill-custom-show-cashier', def.showCashier);
+    setCb('bill-custom-show-stt', def.showStt);
+    setCb('bill-custom-show-item-code', def.showItemCode);
+    setCb('bill-custom-show-item-unit', def.showItemUnit);
     setCb('bill-custom-show-note', def.showNote);
     setCb('bill-custom-show-imei', def.showImei);
+    setCb('bill-custom-show-discount', def.showDiscount);
+    setCb('bill-custom-show-payment-details', def.showPaymentDetails);
+    setCb('bill-custom-show-change', def.showChange);
     setCb('bill-custom-show-qr', def.showQr);
+    setCb('bill-custom-show-signatures', def.showSignatures);
 
     updateBillPaperCardsUI('k80');
     onBillConfigChange();
     showToast('Đã khôi phục thiết lập mẫu in mặc định', 'info');
+}
+
+function renderBillLivePreview(cfg) {
+    const previewEl = document.getElementById('bill-preview-paper');
+    if (!previewEl) return;
+    const s = KVStore.data?.settings || {};
+    const inv = SAMPLE_MOCK_INVOICE;
+
+    const isK58 = cfg.paperSize === 'k58';
+    const isA4 = cfg.paperSize === 'a4';
+    if (isK58) {
+        previewEl.style.maxWidth = '250px';
+    } else if (isA4) {
+        previewEl.style.maxWidth = '100%';
+    } else {
+        previewEl.style.maxWidth = '330px';
+    }
+    previewEl.style.margin = '0 auto';
+
+    if (cfg.fontSize === 'compact') {
+        previewEl.style.fontSize = '11px';
+    } else if (cfg.fontSize === 'large') {
+        previewEl.style.fontSize = '13.5px';
+    } else {
+        previewEl.style.fontSize = '12px';
+    }
+
+    if (cfg.fontFamily === 'sans') {
+        previewEl.style.fontFamily =
+            'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    } else {
+        previewEl.style.fontFamily =
+            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+    }
+
+    const storeName = cfg.customStoreName || s.storeName || 'Kalo HCM';
+    const storeAddr = cfg.customAddress || s.address || '103 Võ Văn Tần, Q.3, TP.HCM';
+    const storePhone = cfg.customPhone
+        ? `Hotline: ${cfg.customPhone}`
+        : s.phone
+          ? `Hotline: ${s.phone}`
+          : 'Hotline: 1900 6522';
+    const storeTax = cfg.customTaxCode ? `MST: ${cfg.customTaxCode}` : '';
+
+    const logoHtml =
+        cfg.showLogo && s.logoUrl
+            ? `<div class="mb-2 flex justify-center"><img src="${escapeHTML(s.logoUrl)}" class="max-h-10 max-w-[160px] object-contain mx-auto" alt="Logo" /></div>`
+            : '';
+
+    const storeInfoHtml = cfg.showStore
+        ? `<div class="font-bold text-[14px] uppercase whitespace-pre-line">${escapeHTML(storeName)}</div>
+           ${cfg.slogan ? `<div class="text-[10.5px] text-gray-500 italic mb-0.5 whitespace-pre-line">${escapeHTML(cfg.slogan)}</div>` : ''}
+           <div class="text-[11px] text-gray-600 whitespace-pre-line">${escapeHTML(storeAddr)}</div>
+           <div class="text-[11px] text-gray-600 whitespace-pre-line">${escapeHTML(storePhone)}</div>
+           ${storeTax ? `<div class="text-[10.5px] text-gray-600 whitespace-pre-line">${escapeHTML(storeTax)}</div>` : ''}`
+        : '';
+
+    const custInfoHtml = cfg.showCustomer
+        ? `<div>Khách hàng: <span>${escapeHTML(inv.customer)}</span></div>
+           ${cfg.showCustomerAddress && inv.customerAddress ? `<div>Địa chỉ: <span>${escapeHTML(inv.customerAddress)}</span></div>` : ''}
+           ${cfg.showCustomerPoints && inv.customerPoints ? `<div>Điểm tích lũy: <span class="font-bold text-[#0066cc]">${inv.customerPoints}</span></div>` : ''}
+           ${cfg.showCustomerDebt && inv.customerOldDebt ? `<div>Nợ cũ: <span class="font-bold text-red-600">${formatVND(inv.customerOldDebt)} đ</span></div>` : ''}`
+        : '';
+
+    const cashierHtml = cfg.showCashier
+        ? `<div>Thu ngân: <span>${escapeHTML(inv.cashier)}</span></div>`
+        : '';
+
+    let tableHeadHtml = '<tr class="border-b border-gray-300 font-bold">';
+    if (cfg.showStt) tableHeadHtml += '<th class="py-1 w-6">#</th>';
+    tableHeadHtml += '<th class="py-1">Mặt hàng</th>';
+    if (cfg.showItemUnit) tableHeadHtml += '<th class="py-1 text-center w-10">ĐVT</th>';
+    tableHeadHtml += '<th class="py-1 text-center">SL</th>';
+    tableHeadHtml += '<th class="py-1 text-right">Đơn giá</th>';
+    tableHeadHtml += '<th class="py-1 text-right">T.Tiền</th></tr>';
+
+    const itemsRowsHtml = inv.items
+        .map((item, idx) => {
+            const skuHtml =
+                cfg.showItemCode && item.code
+                    ? `<div class="text-[10px] text-gray-500 font-mono">Mã: ${escapeHTML(item.code)}</div>`
+                    : '';
+            const imeiHtml =
+                cfg.showImei && item.imeis?.length
+                    ? `<div class="text-[10px] text-gray-500 font-mono">IMEI: ${escapeHTML(item.imeis.join(', '))}</div>`
+                    : '';
+            const noteHtml =
+                cfg.showNote && item.note
+                    ? `<div class="text-[10px] text-gray-500 italic">Ghi chú: ${escapeHTML(item.note)}</div>`
+                    : '';
+
+            let row = '<tr class="border-b border-gray-100 text-[11.5px]">';
+            if (cfg.showStt) row += `<td class="py-1.5 text-center text-gray-500">${idx + 1}</td>`;
+            row += `<td class="py-1.5 pr-1 text-left"><div>${escapeHTML(item.name)}</div>${skuHtml}${imeiHtml}${noteHtml}</td>`;
+            if (cfg.showItemUnit)
+                row += `<td class="py-1.5 px-1 text-center text-gray-600">${escapeHTML(item.unit || '-')}</td>`;
+            row += `<td class="py-1.5 px-1 text-center font-bold">${item.qty}</td>`;
+            row += `<td class="py-1.5 px-1 text-right">${formatVND(item.price)}</td>`;
+            row += `<td class="py-1.5 pl-1 text-right font-bold">${formatVND(item.qty * item.price)}</td></tr>`;
+            return row;
+        })
+        .join('');
+
+    const discountHtml =
+        cfg.showDiscount && inv.discount > 0
+            ? `<div class="flex justify-between"><span>Giảm giá:</span><span>${formatVND(inv.discount)} đ</span></div>`
+            : '';
+
+    const remainingDebt = Math.max(0, inv.total - inv.paid);
+    const debtHtml =
+        remainingDebt > 0
+            ? `<div class="flex justify-between text-[11.5px] text-red-600 font-bold"><span>Còn nợ đơn:</span><span>${formatVND(remainingDebt)} đ</span></div>`
+            : '';
+
+    const totalDebtAfter = (inv.customerOldDebt || 0) + remainingDebt;
+    const totalDebtHtml =
+        cfg.showCustomerDebt && totalDebtAfter > 0
+            ? `<div class="flex justify-between text-[11.5px] text-red-600 font-bold"><span>Tổng nợ sau mua:</span><span>${formatVND(totalDebtAfter)} đ</span></div>`
+            : '';
+
+    let paymentsBreakdownHtml = '';
+    if (cfg.showPaymentDetails && inv.payments?.length) {
+        paymentsBreakdownHtml = `<div class="text-left text-[11px] text-gray-600 pt-1 border-t border-dashed border-gray-200">
+            <div class="font-bold text-gray-700 mb-0.5">Chi tiết thanh toán:</div>
+            ${inv.payments
+                .map((p) => {
+                    const label =
+                        p.method === 'transfer'
+                            ? 'Chuyển khoản'
+                            : p.method === 'cash'
+                              ? 'Tiền mặt'
+                              : 'Quẹt thẻ';
+                    return `<div class="flex justify-between"><span>• ${label}:</span><span class="font-bold">${formatVND(p.amount)} đ</span></div>`;
+                })
+                .join('')}
+        </div>`;
+    }
+
+    const qrSizeMap = { small: 'w-20 h-20', medium: 'w-24 h-24', large: 'w-32 h-32' };
+    const qrSizeClass = qrSizeMap[cfg.qrSize] || 'w-24 h-24';
+    const qrHtml = cfg.showQr
+        ? `<div class="mt-2 pt-2 border-t border-dashed border-gray-300 flex flex-col items-center">
+            <div class="text-[10px] text-gray-500 font-sans mb-1">Mã VietQR thanh toán 24/7:</div>
+            <div class="${qrSizeClass} bg-gray-50 border border-gray-300 rounded p-1 mx-auto flex items-center justify-center font-mono text-[9px] text-gray-400">
+                [ QR VietQR ]
+            </div>
+           </div>`
+        : '';
+
+    const policyHtml = cfg.policy
+        ? `<div class="text-[10px] text-gray-500 mt-1 italic leading-tight whitespace-pre-line">${escapeHTML(cfg.policy)}</div>`
+        : '';
+
+    const signaturesHtml = cfg.showSignatures
+        ? `<div class="pt-3 mt-2 border-t border-dashed border-gray-300 grid grid-cols-2 text-center text-[10.5px]">
+            <div><div class="font-bold">Người mua hàng</div><div class="text-[9px] text-gray-400 italic">(Ký, ghi rõ họ tên)</div><div class="h-8"></div></div>
+            <div><div class="font-bold">Người bán hàng</div><div class="text-[9px] text-gray-400 italic">(Ký, ghi rõ họ tên)</div><div class="h-8"></div></div>
+           </div>`
+        : '';
+
+    previewEl.innerHTML = `
+        ${logoHtml}
+        ${storeInfoHtml}
+        <div class="border-b border-dashed border-gray-400 my-2"></div>
+        <div class="font-bold text-[13.5px] uppercase mb-1 whitespace-pre-line">${escapeHTML(cfg.title || 'HÓA ĐƠN BÁN HÀNG')}</div>
+        <div class="text-[11px] text-left space-y-0.5">
+            <div>Số HĐ: <span class="font-bold">${inv.code}</span></div>
+            <div>Ngày: <span>${inv.time}</span></div>
+            ${custInfoHtml}
+            ${cashierHtml}
+        </div>
+        <div class="border-b border-dashed border-gray-400 my-2"></div>
+        <table class="w-full text-left">
+            <thead>${tableHeadHtml}</thead>
+            <tbody>${itemsRowsHtml}</tbody>
+        </table>
+        <div class="border-b border-dashed border-gray-400 my-2"></div>
+        <div class="space-y-1 text-right font-medium">
+            <div class="flex justify-between"><span>Tổng tiền:</span><span class="font-bold">${formatVND(inv.total)} đ</span></div>
+            ${discountHtml}
+            <div class="flex justify-between text-[12.5px] font-bold"><span>Khách đã trả:</span><span class="text-[#0066cc]">${formatVND(inv.paid)} đ</span></div>
+            ${debtHtml}
+            ${totalDebtHtml}
+            ${paymentsBreakdownHtml}
+        </div>
+        ${qrHtml}
+        <div class="border-b border-dashed border-gray-400 my-2.5"></div>
+        <div class="text-[11px] text-gray-600 italic whitespace-pre-line">${escapeHTML(cfg.footer || 'Cảm ơn Quý khách & Hẹn gặp lại!')}</div>
+        ${policyHtml}
+        ${signaturesHtml}
+    `;
+}
+
+function printTestBillTemplate() {
+    const liveCfg = readBillCustomModalValues();
+    applyReceiptPaperSize(liveCfg.paperSize, liveCfg.fontSize, liveCfg.fontFamily);
+    renderReceiptContent(SAMPLE_MOCK_INVOICE, liveCfg);
+    printRegion('printable-receipt', true, liveCfg.paperSize || 'k80');
 }
 
 function renderReceiptContent(inv, config = null) {
@@ -3043,19 +3586,40 @@ function renderReceiptContent(inv, config = null) {
 
     // 2. Store info
     const storeNameEl = document.getElementById('receipt-store-name');
+    const sloganEl = document.getElementById('receipt-slogan');
     const storeAddrEl = document.getElementById('receipt-address');
     const storePhoneEl = document.getElementById('receipt-phone');
+    const storeTaxEl = document.getElementById('receipt-tax-code');
+
     if (storeNameEl) {
-        storeNameEl.textContent = s.storeName || '';
+        storeNameEl.textContent = cfg.customStoreName || s.storeName || '';
         storeNameEl.style.display = cfg.showStore ? '' : 'none';
     }
+    if (sloganEl) {
+        if (cfg.showStore && cfg.slogan) {
+            sloganEl.textContent = cfg.slogan;
+            sloganEl.classList.remove('hidden');
+        } else {
+            sloganEl.classList.add('hidden');
+        }
+    }
     if (storeAddrEl) {
-        storeAddrEl.textContent = s.address || '';
+        storeAddrEl.textContent = cfg.customAddress || s.address || '';
         storeAddrEl.style.display = cfg.showStore ? '' : 'none';
     }
     if (storePhoneEl) {
-        storePhoneEl.textContent = `Hotline: ${s.hotline || ''} - ĐT: ${s.phone || ''}`;
+        storePhoneEl.textContent = cfg.customPhone
+            ? `Hotline: ${cfg.customPhone}`
+            : `Hotline: ${s.hotline || ''} - ĐT: ${s.phone || ''}`;
         storePhoneEl.style.display = cfg.showStore ? '' : 'none';
+    }
+    if (storeTaxEl) {
+        if (cfg.showStore && cfg.customTaxCode) {
+            storeTaxEl.textContent = `MST: ${cfg.customTaxCode}`;
+            storeTaxEl.classList.remove('hidden');
+        } else {
+            storeTaxEl.classList.add('hidden');
+        }
     }
 
     // 3. Bill Title
@@ -3080,6 +3644,45 @@ function renderReceiptContent(inv, config = null) {
         const custVal = document.getElementById('receipt-customer');
         if (custVal) custVal.textContent = inv.customer || 'Khách lẻ';
     }
+
+    const custAddrRow = document.getElementById('receipt-row-cust-addr');
+    const custAddrVal = document.getElementById('receipt-cust-addr');
+    if (custAddrRow && custAddrVal) {
+        const addr = inv.customerAddress || (inv.customer && inv.customer.address);
+        if (cfg.showCustomer && cfg.showCustomerAddress && addr) {
+            custAddrVal.textContent = addr;
+            custAddrRow.classList.remove('hidden');
+        } else {
+            custAddrRow.classList.add('hidden');
+        }
+    }
+
+    const custPointsRow = document.getElementById('receipt-row-cust-points');
+    const custPointsVal = document.getElementById('receipt-cust-points');
+    if (custPointsRow && custPointsVal) {
+        const pts =
+            inv.customerPoints != null ? inv.customerPoints : inv.customer && inv.customer.points;
+        if (cfg.showCustomer && cfg.showCustomerPoints && pts != null) {
+            custPointsVal.textContent = `${pts} điểm`;
+            custPointsRow.classList.remove('hidden');
+        } else {
+            custPointsRow.classList.add('hidden');
+        }
+    }
+
+    const custDebtRow = document.getElementById('receipt-row-cust-debt');
+    const custDebtVal = document.getElementById('receipt-cust-debt');
+    if (custDebtRow && custDebtVal) {
+        const debt =
+            inv.customerOldDebt != null ? inv.customerOldDebt : inv.customer && inv.customer.debt;
+        if (cfg.showCustomer && cfg.showCustomerDebt && debt != null && debt > 0) {
+            custDebtVal.textContent = `${formatVND(debt)} đ`;
+            custDebtRow.classList.remove('hidden');
+        } else {
+            custDebtRow.classList.add('hidden');
+        }
+    }
+
     const cashierRow = document.getElementById('receipt-row-cashier');
     if (cashierRow) {
         cashierRow.style.display = cfg.showCashier ? '' : 'none';
@@ -3088,12 +3691,28 @@ function renderReceiptContent(inv, config = null) {
     }
 
     // 5. Items
+    const theadTr = document.getElementById('receipt-items-thead-tr');
+    if (theadTr) {
+        let ths = '';
+        if (cfg.showStt) ths += '<th class="py-1 w-6">#</th>';
+        ths += '<th class="py-1">Mặt hàng</th>';
+        if (cfg.showItemUnit) ths += '<th class="py-1 text-center w-10">ĐVT</th>';
+        ths += '<th class="py-1 text-center">SL</th>';
+        ths += '<th class="py-1 text-right">Đơn giá</th>';
+        ths += '<th class="py-1 text-right">T.Tiền</th>';
+        theadTr.innerHTML = ths;
+    }
+
     const tbody = document.getElementById('receipt-items-tbody');
     if (tbody) {
         tbody.innerHTML = '';
         (inv.items || []).forEach((item, idx) => {
             const tr = document.createElement('tr');
             tr.className = 'border-b border-gray-100 text-[12px]';
+            const skuHtml =
+                cfg.showItemCode && item.code
+                    ? renderHTML`<div class="text-[10px] text-gray-500 font-mono mt-0.5 leading-tight text-left">Mã: ${item.code}</div>`
+                    : trustedHTML('');
             const imeisHtml =
                 cfg.showImei && Array.isArray(item.imeis) && item.imeis.length
                     ? renderHTML`<div class="text-[10px] text-gray-500 font-mono mt-0.5 leading-tight text-left">IMEI: ${item.imeis.join(', ')}</div>`
@@ -3102,16 +3721,24 @@ function renderReceiptContent(inv, config = null) {
                 cfg.showNote && item.note && typeof item.note === 'string'
                     ? renderHTML`<div class="text-[10px] text-gray-500 italic mt-0.5 leading-tight text-left">Ghi chú: ${item.note}</div>`
                     : trustedHTML('');
-            tr.innerHTML = renderHTML`
-                <td class="py-1.5 pr-1 text-left">
-                    <div>${idx + 1}. ${item.name || item.code}</div>
-                    ${imeisHtml}
-                    ${noteHtml}
-                </td>
-                <td class="py-1.5 px-1 text-center font-bold">${item.qty}</td>
-                <td class="py-1.5 px-1 text-right">${formatVND(item.price)}</td>
-                <td class="py-1.5 pl-1 text-right font-bold">${formatVND(item.qty * item.price)}</td>
-            `;
+
+            let cells = '';
+            if (cfg.showStt) {
+                cells += `<td class="py-1.5 text-center text-gray-500">${idx + 1}</td>`;
+            }
+            cells += `<td class="py-1.5 pr-1 text-left">
+                <div>${escapeHTML(item.name || item.code)}</div>
+                ${skuHtml}
+                ${imeisHtml}
+                ${noteHtml}
+            </td>`;
+            if (cfg.showItemUnit) {
+                cells += `<td class="py-1.5 px-1 text-center text-gray-600">${escapeHTML(item.unit || '-')}</td>`;
+            }
+            cells += `<td class="py-1.5 px-1 text-center font-bold">${item.qty}</td>
+                      <td class="py-1.5 px-1 text-right">${formatVND(item.price)}</td>
+                      <td class="py-1.5 pl-1 text-right font-bold">${formatVND(item.qty * item.price)}</td>`;
+            tr.innerHTML = cells;
             tbody.appendChild(tr);
         });
     }
@@ -3121,38 +3748,151 @@ function renderReceiptContent(inv, config = null) {
     if (totalEl) totalEl.textContent = `${formatVND(inv.total)} đ`;
     const discountRow = document.getElementById('receipt-row-discount');
     if (discountRow) {
-        discountRow.style.display = inv.discount > 0 ? '' : 'none';
+        discountRow.style.display = cfg.showDiscount !== false && inv.discount > 0 ? '' : 'none';
         const discountVal = document.getElementById('receipt-discount');
         if (discountVal) discountVal.textContent = `${formatVND(inv.discount || 0)} đ`;
     }
     const paidEl = document.getElementById('receipt-paid');
     if (paidEl) paidEl.textContent = `${formatVND(inv.paid)} đ`;
 
+    const remainingDebt = Math.max(
+        0,
+        (inv.total || 0) - (inv.returnedTotal || 0) - (inv.paid || 0)
+    );
+    const debtRow = document.getElementById('receipt-row-debt');
+    const debtVal = document.getElementById('receipt-debt');
+    if (debtRow && debtVal) {
+        if (remainingDebt > 0) {
+            debtVal.textContent = `${formatVND(remainingDebt)} đ`;
+            debtRow.classList.remove('hidden');
+        } else {
+            debtRow.classList.add('hidden');
+        }
+    }
+
+    const totalDebtRow = document.getElementById('receipt-row-total-debt');
+    const totalDebtVal = document.getElementById('receipt-total-debt');
+    if (totalDebtRow && totalDebtVal) {
+        const oldDebt =
+            inv.customerOldDebt != null
+                ? inv.customerOldDebt
+                : (inv.customer && inv.customer.debt) || 0;
+        const totalDebtAfter = oldDebt + remainingDebt;
+        if (cfg.showCustomerDebt && totalDebtAfter > 0) {
+            totalDebtVal.textContent = `${formatVND(totalDebtAfter)} đ`;
+            totalDebtRow.classList.remove('hidden');
+        } else {
+            totalDebtRow.classList.add('hidden');
+        }
+    }
+
+    const changeRow = document.getElementById('receipt-row-change');
+    const changeVal = document.getElementById('receipt-change');
+    if (changeRow && changeVal) {
+        const change = (inv.paid || 0) - (inv.total || 0);
+        if (cfg.showChange !== false && change > 0) {
+            changeVal.textContent = `${formatVND(change)} đ`;
+            changeRow.classList.remove('hidden');
+        } else {
+            changeRow.classList.add('hidden');
+        }
+    }
+
+    const breakdownEl = document.getElementById('receipt-payments-breakdown');
+    if (breakdownEl) {
+        const payments = Array.isArray(inv.payments)
+            ? inv.payments.filter((p) => p.amount > 0)
+            : [];
+        if (
+            cfg.showPaymentDetails !== false &&
+            (payments.length > 1 || inv.paymentMethod === 'multi')
+        ) {
+            breakdownEl.innerHTML = renderHTML`
+                <div class="font-bold text-gray-700 mb-0.5">Chi tiết thanh toán:</div>
+                ${trustedHTML(
+                    payments
+                        .map((p) => {
+                            const methodNames = {
+                                transfer: 'Chuyển khoản',
+                                cash: 'Tiền mặt',
+                                card: 'Quẹt thẻ'
+                            };
+                            const label = methodNames[p.method] || p.method;
+                            return `<div class="flex justify-between"><span>• ${escapeHTML(label)}:</span><span class="font-bold">${formatVND(p.amount)} đ</span></div>`;
+                        })
+                        .join('')
+                )}
+            `;
+            breakdownEl.classList.remove('hidden');
+        } else {
+            breakdownEl.classList.add('hidden');
+        }
+    }
+
     // 7. VietQR
     const qrWrap = document.getElementById('receipt-qr-wrap');
     const qrImg = document.getElementById('receipt-qr-img');
     if (qrWrap && qrImg) {
-        if (cfg.showQr && s.bankCode && s.bankAccount && inv.paid > 0) {
+        const transferAmount = Array.isArray(inv.payments)
+            ? inv.payments.find((p) => p.method === 'transfer')?.amount ||
+              (inv.paymentMethod === 'transfer' ? inv.paid : 0)
+            : inv.paymentMethod === 'transfer'
+              ? inv.paid
+              : 0;
+        if (cfg.showQr && s.bankCode && s.bankAccount && transferAmount > 0) {
             const bankCode = s.bankCode;
             const bankAccount = s.bankAccount;
             const bankOwner = s.bankOwner || s.storeName || 'NKIOT';
             const addInfo = inv.code || 'HD';
-            const qrUrl = `https://api.vietqr.io/image/${bankCode}-${bankAccount}-compact.jpg?amount=${inv.paid}&addInfo=${encodeURIComponent(addInfo)}&accountName=${encodeURIComponent(bankOwner)}`;
+            const qrUrl = `https://api.vietqr.io/image/${bankCode}-${bankAccount}-compact.jpg?amount=${transferAmount}&addInfo=${encodeURIComponent(addInfo)}&accountName=${encodeURIComponent(bankOwner)}`;
             qrImg.src = qrUrl;
+
+            // QR size
+            if (cfg.qrSize === 'small') {
+                qrImg.className = 'w-20 h-20 object-contain mx-auto';
+            } else if (cfg.qrSize === 'large') {
+                qrImg.className = 'w-36 h-36 object-contain mx-auto';
+            } else {
+                qrImg.className = 'w-28 h-28 object-contain mx-auto';
+            }
             qrWrap.classList.remove('hidden');
         } else {
             qrWrap.classList.add('hidden');
         }
     }
 
-    // 8. Footer note
+    // 8. Footer note & policy
     const footerEl = document.getElementById('receipt-footer');
     if (footerEl) {
         footerEl.textContent = cfg.footer || 'Cảm ơn Quý khách & Hẹn gặp lại!';
     }
 
-    // 9. Paper size visual styling
-    applyReceiptPaperSize(cfg.paperSize || 'k80');
+    const policyEl = document.getElementById('receipt-policy');
+    if (policyEl) {
+        if (cfg.policy) {
+            policyEl.textContent = cfg.policy;
+            policyEl.classList.remove('hidden');
+        } else {
+            policyEl.classList.add('hidden');
+        }
+    }
+
+    // 9. Signatures
+    const sigsEl = document.getElementById('receipt-signatures');
+    if (sigsEl) {
+        if (cfg.showSignatures) {
+            sigsEl.classList.remove('hidden');
+        } else {
+            sigsEl.classList.add('hidden');
+        }
+    }
+
+    // 10. Paper size visual styling
+    applyReceiptPaperSize(
+        cfg.paperSize || 'k80',
+        cfg.fontSize || 'standard',
+        cfg.fontFamily || 'monospace'
+    );
 }
 
 function openReceiptModal(inv) {
@@ -4741,6 +5481,54 @@ function openInvoiceDetailModal(inv) {
 
     document.getElementById('inv-detail-total').textContent = `${formatVND(inv.total)} đ`;
     document.getElementById('inv-detail-paid').textContent = `${formatVND(inv.paid)} đ`;
+
+    const remainingDebt = Math.max(
+        0,
+        (inv.total || 0) - (inv.returnedTotal || 0) - (inv.paid || 0)
+    );
+    const debtRow = document.getElementById('inv-detail-debt-row');
+    const debtVal = document.getElementById('inv-detail-debt');
+    if (debtRow && debtVal) {
+        if (remainingDebt > 0) {
+            debtVal.textContent = `${formatVND(remainingDebt)} đ`;
+            debtRow.classList.remove('hidden');
+        } else {
+            debtRow.classList.add('hidden');
+        }
+    }
+
+    const breakdownEl = document.getElementById('inv-detail-payments-breakdown');
+    if (breakdownEl) {
+        const payments = Array.isArray(inv.payments)
+            ? inv.payments.filter((p) => p.amount > 0)
+            : [];
+        if (payments.length > 1 || inv.paymentMethod === 'multi') {
+            breakdownEl.innerHTML = renderHTML`
+                <div class="font-bold text-gray-800 mb-1.5 flex items-center justify-between">
+                    <span>Chi tiết hình thức thanh toán:</span>
+                    <span class="text-[11px] font-normal text-gray-500 font-mono">(${payments.length} hình thức)</span>
+                </div>
+                <div class="space-y-1">
+                    ${trustedHTML(
+                        payments
+                            .map((p) => {
+                                const methodNames = {
+                                    transfer: 'Chuyển khoản (VietQR)',
+                                    cash: 'Tiền mặt',
+                                    card: 'Quẹt thẻ'
+                                };
+                                const label = methodNames[p.method] || p.method;
+                                return `<div class="flex justify-between items-center text-[12px]"><span class="text-gray-600">• ${escapeHTML(label)}:</span><span class="font-bold font-mono text-gray-900">${formatVND(p.amount)} đ</span></div>`;
+                            })
+                            .join('')
+                    )}
+                </div>
+            `;
+            breakdownEl.classList.remove('hidden');
+        } else {
+            breakdownEl.classList.add('hidden');
+        }
+    }
 
     // Action buttons inside invoice detail modal
     const actionContainer = document.getElementById('inv-detail-actions');

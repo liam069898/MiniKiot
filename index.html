@@ -1371,71 +1371,119 @@
                             </div>
                         </div>
 
-                        <!-- Calculation Lines -->
-                        <div class="space-y-2 text-[13px]">
+                        <!-- Calculation Summary Card -->
+                        <div class="bg-gray-50/80 rounded-xl p-2.5 border border-gray-200/70 space-y-1.5 text-[12.5px] mb-2.5">
                             <div class="flex items-center justify-between">
-                                <span class="text-gray-600 font-medium">Tổng số lượng</span>
-                                <span id="pos-total-qty" class="font-bold text-gray-900 tabular-nums">0</span>
+                                <div class="flex items-center space-x-1.5 text-gray-600 font-medium">
+                                    <span>Tiền hàng</span>
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded-md bg-white border border-gray-200/70 text-[10.5px] text-gray-500 font-semibold tabular-nums"><span id="pos-total-qty">0</span>&nbsp;món</span>
+                                </div>
+                                <div class="font-semibold text-gray-900 tabular-nums">
+                                    <span id="pos-subtotal">0</span> <span class="text-[11px] font-normal text-gray-500">đ</span>
+                                </div>
                             </div>
                             <div class="flex items-center justify-between">
-                                <span class="text-gray-600 font-medium">Tổng tiền hàng</span>
-                                <span id="pos-subtotal" class="font-semibold text-gray-900 tabular-nums">0</span>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <span class="text-gray-600 font-medium">Giảm giá / Chiết khấu</span>
+                                <span class="text-gray-600 font-medium">Giảm giá</span>
                                 <div class="flex items-center space-x-1">
-                                    <div class="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 text-[11px] font-bold">
+                                    <div class="inline-flex rounded-lg border border-gray-200/80 p-0.5 bg-white text-[11px] font-bold">
                                         <button type="button" id="pos-discount-type-vnd" onclick="setPosDiscountType('amount')" class="px-1.5 py-0.5 rounded bg-[#0066cc] text-white">đ</button>
-                                        <button type="button" id="pos-discount-type-pct" onclick="setPosDiscountType('percent')" class="px-1.5 py-0.5 rounded text-gray-600 hover:text-gray-900">%</button>
+                                        <button type="button" id="pos-discount-type-pct" onclick="setPosDiscountType('percent')" class="px-1.5 py-0.5 rounded text-gray-600 hover:text-gray-900 bg-transparent">%</button>
                                     </div>
-                                    <input id="pos-discount-input" type="number" min="0" oninput="handlePosDiscountInput(this.value)" placeholder="0" class="w-24 text-right bg-white/80 border border-gray-200/80 rounded-lg px-2 py-0.5 text-[12.5px] focus:outline-none focus:border-[#0066cc] font-semibold tabular-nums">
+                                    <input id="pos-discount-input" type="number" min="0" oninput="handlePosDiscountInput(this.value)" placeholder="0" class="w-20 text-right bg-white border border-gray-200/80 rounded-lg px-2 py-0.5 text-[12px] focus:outline-none focus:border-[#0066cc] font-semibold tabular-nums">
                                 </div>
                             </div>
-
-                            <!-- Khách cần trả (Hero Visual Block) -->
-                            <div class="p-2.5 rounded-xl bg-gradient-to-r from-blue-500/10 via-indigo-50/70 to-blue-500/5 border border-blue-200/70 flex items-center justify-between my-2">
-                                <div class="flex flex-col">
-                                    <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Khách cần trả</span>
-                                    <span class="text-[10px] text-blue-600 font-medium">Đã áp dụng giảm giá</span>
+                            <div class="border-t border-gray-200/70 pt-1.5 flex items-baseline justify-between">
+                                <span class="font-bold text-gray-800 text-[13px]">Khách cần trả</span>
+                                <div class="text-right">
+                                    <span id="pos-grand-total" class="font-black text-[#0066cc] text-[19px] tabular-nums leading-none">0</span>
+                                    <span class="text-xs font-bold text-[#0066cc] ml-0.5">đ</span>
                                 </div>
-                                <span id="pos-grand-total" class="font-black text-[#0066cc] text-[20px] sm:text-[22px] tabular-nums">0</span>
                             </div>
+                        </div>
 
+                        <!-- Payment Method Segmented Control -->
+                        <div class="mb-2">
+                            <div class="bg-gray-100/90 p-0.5 rounded-xl flex items-center border border-gray-200/60 shadow-inner">
+                                <button type="button" id="paymethod-cash" onclick="setPosPaymentMethod('cash')" class="pos-paymethod-btn flex-1 py-1.5 px-0.5 text-center rounded-lg bg-white text-[#0066cc] font-bold shadow-sm text-[11.5px] transition-all">Tiền mặt</button>
+                                <button type="button" id="paymethod-transfer" onclick="setPosPaymentMethod('transfer')" class="pos-paymethod-btn flex-1 py-1.5 px-0.5 text-center rounded-lg text-gray-600 hover:text-gray-900 font-medium text-[11.5px] transition-all">C.Khoản</button>
+                                <button type="button" id="paymethod-card" onclick="setPosPaymentMethod('card')" class="pos-paymethod-btn flex-1 py-1.5 px-0.5 text-center rounded-lg text-gray-600 hover:text-gray-900 font-medium text-[11.5px] transition-all">Quẹt thẻ</button>
+                                <button type="button" id="paymethod-multi" onclick="setPosPaymentMethod('multi')" class="pos-paymethod-btn flex-1 py-1.5 px-0.5 text-center rounded-lg text-gray-600 hover:text-gray-900 font-medium text-[11.5px] transition-all" title="Thanh toán phối hợp nhiều hình thức (chuyển khoản, tiền mặt, thẻ, ghi nợ)">Phối hợp</button>
+                            </div>
+                        </div>
+
+                        <!-- Single Payment Input Container -->
+                        <div id="pos-single-pay-container" class="space-y-1.5 text-[12.5px] bg-white/60 p-2.5 rounded-xl border border-gray-200/60 mb-2">
                             <div class="flex items-center justify-between">
                                 <span class="text-gray-600 font-medium">Khách thanh toán</span>
-                                <div class="flex items-center space-x-1.5">
-                                    <input id="pos-tender-input" type="text" oninput="handlePosTenderInput(this.value)" placeholder="0" class="w-28 text-right bg-white/80 border border-gray-200/80 rounded-lg px-2 py-0.5 text-[12.5px] focus:outline-none focus:border-[#0066cc] font-semibold tabular-nums text-emerald-600">
+                                <div class="flex items-center space-x-1">
+                                    <input id="pos-tender-input" type="text" oninput="handlePosTenderInput(this.value)" placeholder="0" class="w-32 text-right bg-white border border-gray-200 rounded-lg px-2 py-1 text-[13px] focus:outline-none focus:border-[#0066cc] focus:ring-1 focus:ring-[#0066cc]/30 font-bold tabular-nums text-emerald-600">
                                     <span class="text-gray-500 text-xs font-medium">đ</span>
                                 </div>
                             </div>
-                            <div class="flex items-center justify-between">
+                            <div class="flex items-center justify-between pt-1 border-t border-gray-100">
                                 <span class="text-gray-600 font-medium">Tiền thừa trả khách</span>
-                                <span id="pos-change" class="font-bold text-gray-800 text-[14px] tabular-nums">0</span>
-                            </div>
-
-                            <!-- Payment Method Toggle -->
-                            <div class="pt-1">
-                                <div class="text-[11.5px] font-semibold text-gray-500 mb-1">Phương thức thanh toán:</div>
-                                <div class="grid grid-cols-3 gap-1.5">
-                                    <button id="paymethod-cash" onclick="setPosPaymentMethod('cash')" class="pos-paymethod-btn py-1.5 text-center rounded-xl border border-[#0066cc] bg-blue-50 text-[#0066cc] font-bold text-[12px] inline-flex items-center justify-center transition">Tiền mặt</button>
-                                    <button id="paymethod-transfer" onclick="setPosPaymentMethod('transfer')" class="pos-paymethod-btn py-1.5 text-center rounded-xl border border-gray-200 text-gray-700 font-medium text-[12px] hover:bg-white/80 inline-flex items-center justify-center transition">Chuyển khoản</button>
-                                    <button id="paymethod-card" onclick="setPosPaymentMethod('card')" class="pos-paymethod-btn py-1.5 text-center rounded-xl border border-gray-200 text-gray-700 font-medium text-[12px] hover:bg-white/80 inline-flex items-center justify-center transition">Quẹt thẻ</button>
+                                <div class="text-right">
+                                    <span id="pos-change" class="font-bold text-gray-800 text-[13.5px] tabular-nums">0</span>
+                                    <span class="text-xs font-semibold text-gray-500 ml-0.5">đ</span>
                                 </div>
                             </div>
-
-                            <!-- VietQR Box -->
-                            <div id="pos-vietqr-container" class="hidden bg-blue-50/80 border border-blue-200/70 rounded-xl p-2.5 text-center backdrop-blur-sm">
-                                <div class="font-bold text-[#0066cc] text-[12px] mb-1">Mã VietQR động Napas 24/7</div>
-                                <img id="pos-vietqr-img" class="w-36 h-36 mx-auto rounded-xl shadow-sm bg-white p-1 border border-blue-100" alt="VietQR">
-                                <div id="pos-vietqr-desc" class="text-[11px] text-gray-600 mt-1 leading-snug"></div>
-                            </div>
-
-                            <!-- Auto Print Checkbox -->
-                            <label class="flex items-center space-x-2 text-[11.5px] text-gray-600 font-medium cursor-pointer pt-1 select-none">
-                                <input id="pos-auto-print-cb" type="checkbox" checked class="rounded border-gray-300 text-[#0066cc] focus:ring-0">
-                                <span>In hóa đơn sau khi hoàn tất</span>
-                            </label>
                         </div>
+
+                        <!-- Multi Payment Panel -->
+                        <div id="pos-multi-pay-panel" class="hidden space-y-1.5 bg-gray-50/80 p-2.5 rounded-xl border border-gray-200/70 mb-2">
+                            <div class="text-[11.5px] font-bold text-gray-700 flex items-center justify-between pb-1 border-b border-gray-200/60">
+                                <span>Chi tiết thanh toán phối hợp:</span>
+                                <span id="pos-multi-total-paid" class="text-[#0066cc] font-mono font-bold text-[12px]">0 đ</span>
+                            </div>
+                            <!-- Transfer Row -->
+                            <div class="flex items-center justify-between gap-1 text-[11.5px]">
+                                <span class="text-gray-600 font-medium flex items-center space-x-1 min-w-[85px]">
+                                    <span>🏦</span>
+                                    <span>C.Khoản:</span>
+                                </span>
+                                <div class="flex items-center space-x-1 flex-1 justify-end">
+                                    <input id="pos-multi-pay-transfer" type="text" oninput="handleMultiPaymentInput('transfer', this.value)" placeholder="0" class="w-28 text-right bg-white border border-gray-200 rounded-lg px-2 py-0.5 text-[12px] focus:outline-none focus:border-[#0066cc] font-semibold tabular-nums text-[#0066cc]">
+                                    <button type="button" onclick="clearMultiPayment('transfer')" class="w-5 h-5 rounded-md flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-gray-100 text-xs font-bold transition" title="Xóa">✕</button>
+                                </div>
+                            </div>
+                            <!-- Cash Row -->
+                            <div class="flex items-center justify-between gap-1 text-[11.5px]">
+                                <span class="text-gray-600 font-medium flex items-center space-x-1 min-w-[85px]">
+                                    <span>💵</span>
+                                    <span>Tiền mặt:</span>
+                                </span>
+                                <div class="flex items-center space-x-1 flex-1 justify-end">
+                                    <input id="pos-multi-pay-cash" type="text" oninput="handleMultiPaymentInput('cash', this.value)" placeholder="0" class="w-28 text-right bg-white border border-gray-200 rounded-lg px-2 py-0.5 text-[12px] focus:outline-none focus:border-[#0066cc] font-semibold tabular-nums text-emerald-600">
+                                    <button type="button" onclick="clearMultiPayment('cash')" class="w-5 h-5 rounded-md flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-gray-100 text-xs font-bold transition" title="Xóa">✕</button>
+                                </div>
+                            </div>
+                            <!-- Card Row -->
+                            <div class="flex items-center justify-between gap-1 text-[11.5px]">
+                                <span class="text-gray-600 font-medium flex items-center space-x-1 min-w-[85px]">
+                                    <span>💳</span>
+                                    <span>Quẹt thẻ:</span>
+                                </span>
+                                <div class="flex items-center space-x-1 flex-1 justify-end">
+                                    <input id="pos-multi-pay-card" type="text" oninput="handleMultiPaymentInput('card', this.value)" placeholder="0" class="w-28 text-right bg-white border border-gray-200 rounded-lg px-2 py-0.5 text-[12px] focus:outline-none focus:border-[#0066cc] font-semibold tabular-nums text-purple-600">
+                                    <button type="button" onclick="clearMultiPayment('card')" class="w-5 h-5 rounded-md flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-gray-100 text-xs font-bold transition" title="Xóa">✕</button>
+                                </div>
+                            </div>
+                            <!-- Summary: Debt or Change -->
+                            <div id="pos-multi-summary" class="pt-1 border-t border-gray-200/60"></div>
+                        </div>
+
+                        <!-- VietQR Box -->
+                        <div id="pos-vietqr-container" class="hidden bg-blue-50/80 border border-blue-200/70 rounded-xl p-2.5 text-center backdrop-blur-sm mb-2">
+                            <div class="font-bold text-[#0066cc] text-[12px] mb-1">Mã VietQR động Napas 24/7</div>
+                            <img id="pos-vietqr-img" class="w-32 h-32 mx-auto rounded-xl shadow-sm bg-white p-1 border border-blue-100" alt="VietQR">
+                            <div id="pos-vietqr-desc" class="text-[11px] text-gray-600 mt-1 leading-snug"></div>
+                        </div>
+
+                        <!-- Auto Print Checkbox -->
+                        <label class="flex items-center space-x-2 text-[11.5px] text-gray-600 font-medium cursor-pointer py-1 select-none">
+                            <input id="pos-auto-print-cb" type="checkbox" checked class="rounded border-gray-300 text-[#0066cc] focus:ring-0">
+                            <span>In hóa đơn sau khi hoàn tất</span>
+                        </label>
                     </div>
 
                     <!-- Big Checkout Buttons -->
@@ -1510,21 +1558,26 @@
                 <div id="receipt-logo-wrap" class="mb-2 hidden flex justify-center">
                     <img id="receipt-logo-img" class="max-h-12 max-w-[180px] object-contain mx-auto" alt="Logo" />
                 </div>
-                <div id="receipt-store-name" class="font-bold text-[15px] uppercase">Kalo HCM</div>
-                <div id="receipt-address" class="text-[11px] text-gray-600">103 Võ Văn Tần, Q.3, TP.HCM</div>
-                <div id="receipt-phone" class="text-[11px] text-gray-600 mb-2">Hotline: 1900 6522</div>
+                <div id="receipt-store-name" class="font-bold text-[15px] uppercase whitespace-pre-line">Kalo HCM</div>
+                <div id="receipt-slogan" class="text-[11px] text-gray-500 italic mb-0.5 whitespace-pre-line hidden"></div>
+                <div id="receipt-address" class="text-[11px] text-gray-600 whitespace-pre-line">103 Võ Văn Tần, Q.3, TP.HCM</div>
+                <div id="receipt-phone" class="text-[11px] text-gray-600 mb-1 whitespace-pre-line">Hotline: 1900 6522</div>
+                <div id="receipt-tax-code" class="text-[10.5px] text-gray-600 mb-1 whitespace-pre-line hidden"></div>
                 <div class="border-b border-dashed border-gray-400 my-2"></div>
-                <div id="receipt-title" class="font-bold text-[14px] uppercase mb-1">HÓA ĐƠN BÁN HÀNG</div>
-                <div class="text-[11px] text-left">
+                <div id="receipt-title" class="font-bold text-[14px] uppercase mb-1 whitespace-pre-line">HÓA ĐƠN BÁN HÀNG</div>
+                <div class="text-[11px] text-left space-y-0.5">
                     <div id="receipt-row-code">Số HĐ: <span id="receipt-code" class="font-bold"></span></div>
                     <div id="receipt-row-time">Ngày: <span id="receipt-time"></span></div>
                     <div id="receipt-row-customer">Khách hàng: <span id="receipt-customer"></span></div>
+                    <div id="receipt-row-cust-addr" class="hidden">Địa chỉ: <span id="receipt-cust-addr"></span></div>
+                    <div id="receipt-row-cust-points" class="hidden">Điểm tích lũy: <span id="receipt-cust-points" class="font-bold text-[#0066cc]"></span></div>
+                    <div id="receipt-row-cust-debt" class="hidden">Nợ cũ: <span id="receipt-cust-debt" class="font-bold text-red-600"></span></div>
                     <div id="receipt-row-cashier">Thu ngân: <span id="receipt-cashier"></span></div>
                 </div>
                 <div class="border-b border-dashed border-gray-400 my-2"></div>
-                <table class="w-full text-left">
+                <table class="w-full text-left" id="receipt-items-table">
                     <thead>
-                        <tr class="border-b border-gray-300 font-bold">
+                        <tr class="border-b border-gray-300 font-bold" id="receipt-items-thead-tr">
                             <th class="py-1">Mặt hàng</th>
                             <th class="py-1 text-center">SL</th>
                             <th class="py-1 text-right">Đơn giá</th>
@@ -1538,14 +1591,30 @@
                     <div class="flex justify-between"><span>Tổng tiền:</span><span id="receipt-total" class="font-bold"></span></div>
                     <div id="receipt-row-discount" class="flex justify-between"><span>Giảm giá:</span><span id="receipt-discount"></span></div>
                     <div class="flex justify-between text-[13px] font-bold"><span>Khách đã trả:</span><span id="receipt-paid" class="text-[#0066cc]"></span></div>
+                    <div id="receipt-row-debt" class="flex justify-between text-[12px] text-red-600 font-bold hidden"><span>Còn nợ đơn:</span><span id="receipt-debt"></span></div>
+                    <div id="receipt-row-total-debt" class="flex justify-between text-[12px] text-red-600 font-bold hidden"><span>Tổng nợ sau mua:</span><span id="receipt-total-debt"></span></div>
                     <div id="receipt-row-change" class="flex justify-between text-[12px] text-gray-600 hidden"><span>Tiền thừa:</span><span id="receipt-change"></span></div>
+                    <div id="receipt-payments-breakdown" class="text-left text-[11px] text-gray-600 pt-1 border-t border-dashed border-gray-200 hidden"></div>
                 </div>
                 <div id="receipt-qr-wrap" class="hidden mt-2 pt-2 border-t border-dashed border-gray-300 flex flex-col items-center">
                     <div class="text-[10px] text-gray-500 font-sans mb-1">Quét mã VietQR chuyển khoản:</div>
                     <img id="receipt-qr-img" class="w-28 h-28 object-contain mx-auto" alt="VietQR" />
                 </div>
-                <div class="border-b border-dashed border-gray-400 my-3"></div>
-                <div id="receipt-footer" class="text-[11px] text-gray-500 italic">Cảm ơn Quý khách & Hẹn gặp lại!</div>
+                <div class="border-b border-dashed border-gray-400 my-2.5"></div>
+                <div id="receipt-footer" class="text-[11px] text-gray-500 italic whitespace-pre-line">Cảm ơn Quý khách & Hẹn gặp lại!</div>
+                <div id="receipt-policy" class="text-[10px] text-gray-500 mt-1 italic whitespace-pre-line hidden"></div>
+                <div id="receipt-signatures" class="hidden pt-3 mt-2 border-t border-dashed border-gray-300 grid grid-cols-2 text-center text-[11px]">
+                    <div>
+                        <div class="font-bold">Người mua hàng</div>
+                        <div class="text-[9.5px] text-gray-400 italic">(Ký, ghi rõ họ tên)</div>
+                        <div class="h-10"></div>
+                    </div>
+                    <div>
+                        <div class="font-bold">Người bán hàng</div>
+                        <div class="text-[9.5px] text-gray-400 italic">(Ký, ghi rõ họ tên)</div>
+                        <div class="h-10"></div>
+                    </div>
+                </div>
             </div>
 
             <!-- Receipt Action Buttons -->
@@ -1559,93 +1628,265 @@
         </div>
     </div>
 
-    <!-- 1B. BILL CUSTOMIZATION MODAL (CUSTOM BILL IN) -->
-    <div id="bill-custom-modal" class="kv-modal hidden fixed inset-0 bg-black/40 backdrop-blur-md z-[160] flex items-center justify-center p-4">
-        <div class="bg-white/95 backdrop-blur-2xl rounded-2xl shadow-2xl max-w-lg w-full p-5 sm:p-6 border border-white/80 max-h-[92vh] flex flex-col">
-            <div class="flex justify-between items-center mb-3 pb-2.5 border-b border-gray-100">
+    <!-- 1B. BILL CUSTOMIZATION MODAL (DEEP CUSTOM BILL IN WITH LIVE PREVIEW) -->
+    <div id="bill-custom-modal" class="kv-modal hidden fixed inset-0 bg-black/50 backdrop-blur-md z-[160] flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-white/95 backdrop-blur-2xl rounded-2xl shadow-2xl max-w-5xl w-full p-4 sm:p-5 border border-white/80 max-h-[94vh] flex flex-col">
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center mb-3 pb-2.5 border-b border-gray-100 flex-shrink-0">
                 <div class="flex items-center space-x-2">
                     <span class="text-xl">🖨️</span>
-                    <h3 class="font-bold text-[16px] text-gray-900">Tùy biến mẫu in hóa đơn</h3>
+                    <div>
+                        <h3 class="font-bold text-[16px] text-gray-900">Tùy biến mẫu in hóa đơn chuyên sâu</h3>
+                        <div class="text-[11.5px] text-gray-500">Tùy chỉnh khổ giấy, cỡ chữ, bố cục và nội dung hóa đơn theo ý muốn</div>
+                    </div>
                 </div>
                 <button type="button" onclick="closeBillCustomModal()" class="w-8 h-8 rounded-full bg-gray-100/80 hover:bg-gray-200 text-gray-500 hover:text-gray-800 flex items-center justify-center font-bold text-sm transition">✕</button>
             </div>
 
-            <div class="overflow-y-auto flex-1 space-y-4 pr-1 text-[13px]">
-                <!-- Paper Size -->
-                <div>
-                    <label class="block font-semibold text-gray-700 mb-1.5">Khổ giấy in hóa đơn</label>
-                    <div class="grid grid-cols-2 gap-3">
-                        <label class="cursor-pointer border rounded-xl p-3 flex items-center space-x-2.5 transition border-gray-200 hover:border-[#0066cc]" id="bill-opt-paper-k80-card">
-                            <input type="radio" name="bill-paper-size" value="k80" id="bill-opt-paper-k80" onchange="onBillConfigChange()" class="text-[#0066cc] focus:ring-0">
-                            <div>
-                                <div class="font-bold text-gray-900">Khổ K80 (80mm)</div>
-                                <div class="text-[11px] text-gray-500">Chuẩn máy in bill nhiệt phổ biến</div>
+            <!-- Modal Body (2 Columns: Controls on left, Live Preview on right) -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 overflow-y-auto flex-1 pr-1 text-[12.5px] my-1">
+                <!-- Left: Customization Tabs (7 Cols) -->
+                <div class="lg:col-span-7 flex flex-col space-y-3">
+                    <!-- Tab Switcher Header -->
+                    <div class="flex items-center gap-1 bg-gray-100/90 p-1 rounded-xl border border-gray-200/70 text-[12px] flex-shrink-0">
+                        <button type="button" id="bill-tab-btn-format" onclick="switchBillCustomTab('format')" class="bill-tab-btn flex-1 py-1.5 px-2 rounded-lg bg-white text-[#0066cc] font-bold shadow-xs text-center transition">📐 Khổ giấy & Font</button>
+                        <button type="button" id="bill-tab-btn-store" onclick="switchBillCustomTab('store')" class="bill-tab-btn flex-1 py-1.5 px-2 rounded-lg text-gray-600 font-medium hover:text-gray-900 text-center transition">🏪 Cửa hàng & Khách</button>
+                        <button type="button" id="bill-tab-btn-items" onclick="switchBillCustomTab('items')" class="bill-tab-btn flex-1 py-1.5 px-2 rounded-lg text-gray-600 font-medium hover:text-gray-900 text-center transition">📦 Hàng & Tiền</button>
+                        <button type="button" id="bill-tab-btn-footer" onclick="switchBillCustomTab('footer')" class="bill-tab-btn flex-1 py-1.5 px-2 rounded-lg text-gray-600 font-medium hover:text-gray-900 text-center transition">📝 Chân trang & Lưu ý</button>
+                    </div>
+
+                    <!-- TAB 1: FORMAT & PAPER SIZE -->
+                    <div id="bill-tab-content-format" class="bill-tab-content space-y-3">
+                        <div>
+                            <label class="block font-semibold text-gray-700 mb-1.5">Khổ giấy in hóa đơn</label>
+                            <div class="grid grid-cols-3 gap-2">
+                                <label class="cursor-pointer border rounded-xl p-2.5 flex items-center space-x-2 transition border-gray-200 hover:border-[#0066cc]" id="bill-opt-paper-k80-card">
+                                    <input type="radio" name="bill-paper-size" value="k80" id="bill-opt-paper-k80" onchange="onBillConfigChange()" class="text-[#0066cc] focus:ring-0">
+                                    <div class="min-w-0">
+                                        <div class="font-bold text-gray-900 text-[12px] truncate">K80 (80mm)</div>
+                                        <div class="text-[10.5px] text-gray-500 truncate">Máy nhiệt chuẩn</div>
+                                    </div>
+                                </label>
+                                <label class="cursor-pointer border rounded-xl p-2.5 flex items-center space-x-2 transition border-gray-200 hover:border-[#0066cc]" id="bill-opt-paper-k58-card">
+                                    <input type="radio" name="bill-paper-size" value="k58" id="bill-opt-paper-k58" onchange="onBillConfigChange()" class="text-[#0066cc] focus:ring-0">
+                                    <div class="min-w-0">
+                                        <div class="font-bold text-gray-900 text-[12px] truncate">K58 (58mm)</div>
+                                        <div class="text-[10.5px] text-gray-500 truncate">Máy in mini / POS</div>
+                                    </div>
+                                </label>
+                                <label class="cursor-pointer border rounded-xl p-2.5 flex items-center space-x-2 transition border-gray-200 hover:border-[#0066cc]" id="bill-opt-paper-a4-card">
+                                    <input type="radio" name="bill-paper-size" value="a4" id="bill-opt-paper-a4" onchange="onBillConfigChange()" class="text-[#0066cc] focus:ring-0">
+                                    <div class="min-w-0">
+                                        <div class="font-bold text-gray-900 text-[12px] truncate">Khổ A4 / A5</div>
+                                        <div class="text-[10.5px] text-gray-500 truncate">Bán buôn & Giao hàng</div>
+                                    </div>
+                                </label>
                             </div>
-                        </label>
-                        <label class="cursor-pointer border rounded-xl p-3 flex items-center space-x-2.5 transition border-gray-200 hover:border-[#0066cc]" id="bill-opt-paper-k58-card">
-                            <input type="radio" name="bill-paper-size" value="k58" id="bill-opt-paper-k58" onchange="onBillConfigChange()" class="text-[#0066cc] focus:ring-0">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <div class="font-bold text-gray-900">Khổ K58 (58mm)</div>
-                                <div class="text-[11px] text-gray-500">Máy in bill mini / POS cầm tay</div>
+                                <label class="block font-semibold text-gray-700 mb-1">Cỡ chữ hóa đơn</label>
+                                <select id="bill-custom-font-size" onchange="onBillConfigChange()" class="w-full border border-gray-200 rounded-xl px-2.5 py-1.5 bg-white text-[12.5px] focus:border-[#0066cc] focus:outline-none">
+                                    <option value="compact">Nhỏ gọn (11px - Tiết kiệm giấy)</option>
+                                    <option value="standard" selected>Tiêu chuẩn (12px - Cân đối)</option>
+                                    <option value="large">Cỡ lớn (13.5px - Dễ đọc)</option>
+                                </select>
                             </div>
-                        </label>
+                            <div>
+                                <label class="block font-semibold text-gray-700 mb-1">Kiểu phông chữ</label>
+                                <select id="bill-custom-font-family" onchange="onBillConfigChange()" class="w-full border border-gray-200 rounded-xl px-2.5 py-1.5 bg-white text-[12.5px] focus:border-[#0066cc] focus:outline-none">
+                                    <option value="monospace" selected>Monospace (Nhiệt truyền thống)</option>
+                                    <option value="sans">Sans-serif (Nét thanh hiện đại)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-gray-700 mb-1">Tiêu đề hóa đơn (hỗ trợ xuống dòng)</label>
+                            <textarea id="bill-custom-title" oninput="onBillConfigChange()" rows="1" placeholder="Ví dụ: HÓA ĐƠN BÁN HÀNG&#10;(KIÊM PHIẾU XUẤT KHO)" class="w-full border border-gray-200/85 rounded-xl px-3 py-1.5 font-bold uppercase focus:border-[#0066cc] focus:outline-none text-[12.5px]"></textarea>
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-gray-700 mb-1">Slogan / Lời chào đầu bill (hỗ trợ xuống dòng)</label>
+                            <textarea id="bill-custom-slogan" oninput="onBillConfigChange()" rows="2" placeholder="Ví dụ: Chuyên sỉ & lẻ thiết bị công nghệ chính hãng...&#10;Uy tín tạo nên thương hiệu" class="w-full border border-gray-200/85 rounded-xl px-3 py-1.5 italic focus:border-[#0066cc] focus:outline-none text-[12px]"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: STORE & CUSTOMER INFO -->
+                    <div id="bill-tab-content-store" class="bill-tab-content space-y-3 hidden">
+                        <div class="bg-gray-50/80 p-3 rounded-xl border border-gray-200/70 space-y-2.5">
+                            <div class="font-bold text-gray-800 text-[12.5px] flex items-center justify-between">
+                                <span>Thông tin cửa hàng</span>
+                                <div class="flex items-center space-x-3 text-[11.5px] font-normal">
+                                    <label class="flex items-center space-x-1 cursor-pointer">
+                                        <input type="checkbox" id="bill-custom-show-logo" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                        <span>Logo</span>
+                                    </label>
+                                    <label class="flex items-center space-x-1 cursor-pointer">
+                                        <input type="checkbox" id="bill-custom-show-store" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                        <span>Thông tin shop</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[11px] text-gray-600 mb-0.5">Tên shop hiển thị (hỗ trợ xuống dòng)</label>
+                                    <textarea id="bill-custom-store-name" oninput="onBillConfigChange()" rows="1" placeholder="Tên cửa hàng trên hóa đơn" class="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-[12px] focus:outline-none focus:border-[#0066cc]"></textarea>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] text-gray-600 mb-0.5">Số Hotline / ĐT (hỗ trợ xuống dòng)</label>
+                                    <textarea id="bill-custom-phone" oninput="onBillConfigChange()" rows="1" placeholder="Hotline: 0988.xxx.xxx" class="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-[12px] focus:outline-none focus:border-[#0066cc]"></textarea>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[11px] text-gray-600 mb-0.5">Địa chỉ hiển thị trên hóa đơn (hỗ trợ xuống dòng)</label>
+                                    <textarea id="bill-custom-address" oninput="onBillConfigChange()" rows="2" placeholder="Địa chỉ chi nhánh..." class="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-[12px] focus:outline-none focus:border-[#0066cc]"></textarea>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] text-gray-600 mb-0.5">Mã số thuế / Website / Ghi chú (nếu có)</label>
+                                    <textarea id="bill-custom-tax-code" oninput="onBillConfigChange()" rows="2" placeholder="MST: 0312345678..." class="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-[12px] focus:outline-none focus:border-[#0066cc]"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-50/80 p-3 rounded-xl border border-gray-200/70 space-y-2">
+                            <div class="font-bold text-gray-800 text-[12.5px]">Thông tin khách hàng & Giao dịch</div>
+                            <div class="grid grid-cols-2 gap-2 pt-1">
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-customer" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Tên khách hàng</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-cust-addr" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Địa chỉ khách hàng</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-cust-points" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Điểm tích lũy của khách</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-cust-debt" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Nợ cũ & Tổng nợ sau mua</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-cashier" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Tên nhân viên thu ngân</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 3: ITEMS & PAYMENTS -->
+                    <div id="bill-tab-content-items" class="bill-tab-content space-y-3 hidden">
+                        <div class="bg-gray-50/80 p-3 rounded-xl border border-gray-200/70 space-y-2">
+                            <div class="font-bold text-gray-800 text-[12.5px]">Hiển thị bảng hàng hóa</div>
+                            <div class="grid grid-cols-2 gap-2 pt-1">
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-stt" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Số thứ tự (STT)</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-item-code" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Mã sản phẩm (SKU)</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-item-unit" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Đơn vị tính (ĐVT)</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-imei" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Số Serial / IMEI</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-note" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Ghi chú dưới từng món hàng</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-50/80 p-3 rounded-xl border border-gray-200/70 space-y-2">
+                            <div class="font-bold text-gray-800 text-[12.5px]">Thanh toán & Mã VietQR</div>
+                            <div class="grid grid-cols-2 gap-2 pt-1">
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-discount" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Giảm giá / Chiết khấu</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-payment-details" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Chi tiết thanh toán phối hợp</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-change" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Tiền thừa trả khách</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer text-[12px]">
+                                    <input type="checkbox" id="bill-custom-show-qr" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                    <span>Mã VietQR thanh toán 24/7</span>
+                                </label>
+                            </div>
+                            <div class="pt-1 flex items-center justify-between text-[12px]">
+                                <span class="text-gray-600 font-medium">Kích thước mã VietQR:</span>
+                                <select id="bill-custom-qr-size" onchange="onBillConfigChange()" class="border border-gray-200 rounded-lg px-2 py-0.5 bg-white text-[11.5px] focus:outline-none focus:border-[#0066cc]">
+                                    <option value="small">Nhỏ gọn (100px)</option>
+                                    <option value="medium" selected>Tiêu chuẩn (120px)</option>
+                                    <option value="large">Cỡ lớn (150px)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 4: FOOTER & POLICIES -->
+                    <div id="bill-tab-content-footer" class="bill-tab-content space-y-3 hidden">
+                        <div>
+                            <label class="block font-semibold text-gray-700 mb-1">Lời cảm ơn chân trang (hỗ trợ xuống dòng)</label>
+                            <textarea id="bill-custom-footer" oninput="onBillConfigChange()" rows="2" placeholder="Ví dụ: Cảm ơn Quý khách & Hẹn gặp lại!&#10;Hotline góp ý: 0988.xxx.xxx" class="w-full border border-gray-200/85 rounded-xl px-3 py-1.5 text-[12px] focus:border-[#0066cc] focus:outline-none"></textarea>
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-gray-700 mb-1">Chính sách bảo hành / Đổi trả hàng (hỗ trợ xuống dòng)</label>
+                            <textarea id="bill-custom-policy" oninput="onBillConfigChange()" rows="3" placeholder="Ví dụ: Quý khách vui lòng kiểm tra kỹ hàng trước khi rời quầy.&#10;Hàng đổi trả trong vòng 3 ngày còn nguyên tem mác..." class="w-full border border-gray-200/85 rounded-xl px-3 py-1.5 text-[12px] focus:border-[#0066cc] focus:outline-none"></textarea>
+                        </div>
+                        <div class="bg-gray-50/80 p-3 rounded-xl border border-gray-200/70">
+                            <label class="flex items-center space-x-2 cursor-pointer text-[12.5px] font-medium text-gray-700">
+                                <input type="checkbox" id="bill-custom-show-signatures" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
+                                <span>In khu vực chữ ký (Người mua hàng & Người bán hàng)</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Bill Title -->
-                <div>
-                    <label class="block font-semibold text-gray-700 mb-1">Tiêu đề hóa đơn</label>
-                    <input type="text" id="bill-custom-title" oninput="onBillConfigChange()" placeholder="Ví dụ: HÓA ĐƠN BÁN HÀNG, PHIẾU THANH TOÁN..." class="w-full border border-gray-200/85 rounded-xl px-3 py-2 font-bold uppercase focus:border-[#0066cc] focus:outline-none">
-                </div>
-
-                <!-- Checkbox toggles -->
-                <div>
-                    <label class="block font-semibold text-gray-700 mb-1.5">Tùy chọn hiển thị trên hóa đơn</label>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-gray-50/70 p-3 rounded-xl border border-gray-200/70">
-                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
-                            <input type="checkbox" id="bill-custom-show-logo" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
-                            <span>In Logo cửa hàng</span>
-                        </label>
-                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
-                            <input type="checkbox" id="bill-custom-show-store" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
-                            <span>In thông tin shop (Tên, ĐT, Địa chỉ)</span>
-                        </label>
-                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
-                            <input type="checkbox" id="bill-custom-show-customer" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
-                            <span>In thông tin khách hàng</span>
-                        </label>
-                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
-                            <input type="checkbox" id="bill-custom-show-cashier" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
-                            <span>In tên thu ngân</span>
-                        </label>
-                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
-                            <input type="checkbox" id="bill-custom-show-note" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
-                            <span>In ghi chú dưới từng món hàng</span>
-                        </label>
-                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
-                            <input type="checkbox" id="bill-custom-show-imei" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
-                            <span>In số IMEI / Serial</span>
-                        </label>
-                        <label class="flex items-center space-x-2 cursor-pointer text-[12.5px]">
-                            <input type="checkbox" id="bill-custom-show-qr" onchange="onBillConfigChange()" class="rounded text-[#0066cc] focus:ring-0">
-                            <span>In mã QR thanh toán VietQR</span>
-                        </label>
+                <!-- Right: Live Preview Panel (5 Cols) -->
+                <div class="lg:col-span-5 bg-gray-100/90 rounded-2xl p-3 sm:p-3.5 flex flex-col border border-gray-200/70 max-h-[72vh] min-h-[380px]">
+                    <div class="flex items-center justify-between pb-2 border-b border-gray-200/60 mb-2 flex-shrink-0">
+                        <span class="font-bold text-gray-700 text-[12px] flex items-center space-x-1">
+                            <span>👁️</span>
+                            <span>Xem trước trực tiếp (Live)</span>
+                        </span>
+                        <button type="button" onclick="printTestBillTemplate()" class="px-2.5 py-1 rounded-lg bg-white hover:bg-blue-50 text-[#0066cc] border border-blue-200 text-[11px] font-bold shadow-2xs transition flex items-center space-x-1" title="In thử mẫu này ra máy in nhiệt thực tế">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                            <span>In thử</span>
+                        </button>
                     </div>
-                </div>
 
-                <!-- Footer message -->
-                <div>
-                    <label class="block font-semibold text-gray-700 mb-1">Lời cảm ơn & Ghi chú chân trang</label>
-                    <textarea id="bill-custom-footer" oninput="onBillConfigChange()" rows="2" placeholder="Ví dụ: Cảm ơn Quý khách & Hẹn gặp lại! Quý khách vui lòng kiểm tra hàng trước khi rời quầy..." class="w-full border border-gray-200/85 rounded-xl px-3 py-2 text-[12.5px] focus:border-[#0066cc] focus:outline-none"></textarea>
+                    <!-- Scrollable Live Paper Container -->
+                    <div class="overflow-y-auto flex-1 flex justify-center py-1 px-1">
+                        <div id="bill-preview-paper" class="bg-white rounded-lg p-3 shadow-md border border-gray-200 text-gray-800 transition-all text-center w-full"></div>
+                    </div>
                 </div>
             </div>
 
-            <div class="flex justify-between items-center pt-3 border-t border-gray-100/80 mt-2">
+            <!-- Modal Footer -->
+            <div class="flex justify-between items-center pt-3 border-t border-gray-100/80 mt-2 flex-shrink-0">
                 <button type="button" onclick="resetBillCustomConfig()" class="text-rose-600 hover:text-rose-800 text-[12px] font-medium transition">
                     ↺ Khôi phục mặc định
                 </button>
                 <div class="flex space-x-2">
                     <button type="button" onclick="closeBillCustomModal()" class="glass-btn-secondary px-4 py-2 text-gray-700 rounded-xl font-medium text-[13px] hover:text-gray-900 transition shadow-xs">Hủy</button>
+                    <button type="button" onclick="printTestBillTemplate()" class="px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#0066cc] border border-blue-200 font-bold text-[13px] transition shadow-xs flex items-center space-x-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                        <span>In thử</span>
+                    </button>
                     <button type="button" onclick="saveBillCustomConfig()" class="glass-btn-primary px-5 py-2 text-white rounded-xl font-bold text-[13px] transition shadow-xs">Lưu mẫu in</button>
                 </div>
             </div>
@@ -2162,10 +2403,15 @@
                 <span>Tổng tiền hàng:</span>
                 <span id="inv-detail-total" class="text-[#0066cc]"></span>
             </div>
-            <div class="flex justify-between font-medium text-[13px] text-gray-600 mt-1 mb-4">
+            <div class="flex justify-between font-medium text-[13px] text-gray-600 mt-1 mb-1">
                 <span>Khách đã trả:</span>
                 <span id="inv-detail-paid" class="text-gray-900 font-bold"></span>
             </div>
+            <div id="inv-detail-debt-row" class="flex justify-between font-medium text-[13px] text-red-600 mb-2 hidden">
+                <span>Còn nợ:</span>
+                <span id="inv-detail-debt" class="font-bold"></span>
+            </div>
+            <div id="inv-detail-payments-breakdown" class="text-[12px] text-gray-600 bg-gray-50/70 rounded-xl p-2.5 mb-3 hidden"></div>
             <div class="flex justify-between items-center pt-3 border-t border-gray-100/80">
                 <div id="inv-detail-actions" class="flex items-center space-x-2"></div>
                 <button onclick="document.getElementById('invoice-detail-modal').classList.add('hidden')" class="glass-btn-secondary px-4.5 py-2 text-gray-700 hover:text-gray-900 rounded-xl font-medium text-[13px] transition shadow-xs">Đóng</button>

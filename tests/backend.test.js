@@ -1182,3 +1182,79 @@ test('command response is a delta only when the client base matches the server r
     const stale = await sale(rev);
     assert.ok(stale.json.data && !stale.json.delta);
 });
+
+test('multi-method sale splits payments across transfer, cash and card and books remaining debt', () => {
+    const data = db.getAllData();
+    const cust = data.customers.find((c) => c.code !== 'KL');
+    const initialDebt = cust.debt || 0;
+    const prod = data.products.find((p) => (p.branch || 'A') === 'A' && p.stock >= 1);
+    const oldPrice = prod.price;
+    prod.price = 10000000;
+    db.saveAllData(data);
+
+    // 1. Retail customer underpayment with multi-payment is rejected
+    assert.throws(
+        () =>
+            command('sale', {
+                branch: 'A',
+                items: [{ code: prod.code, qty: 1 }],
+                payments: [
+                    { method: 'transfer', amount: 2000000 },
+                    { method: 'cash', amount: 2000000 },
+                    { method: 'card', amount: 2000000 }
+                ]
+            }),
+        /Khách lẻ chưa trả đủ tiền/
+    );
+
+    // 2. Exact user scenario: 10M total, 2M transfer, 2M cash, 2M card, 4M debt
+    const invoice = command('sale', {
+        branch: 'A',
+        items: [{ code: prod.code, qty: 1 }],
+        customerId: cust.id,
+        payments: [
+            { method: 'transfer', amount: 2000000 },
+            { method: 'cash', amount: 2000000 },
+            { method: 'card', amount: 2000000 }
+        ]
+    }).result;
+
+    assert.equal(invoice.total, 10000000);
+    assert.equal(invoice.paid, 6000000);
+    assert.equal(invoice.redPaid, true);
+    assert.equal(invoice.paymentMethod, 'multi');
+    assert.equal(invoice.payments.length, 3);
+    assert.deepEqual(
+        invoice.payments.map((p) => ({ method: p.method, amount: p.amount })),
+        [
+            { method: 'transfer', amount: 2000000 },
+            { method: 'card', amount: 2000000 },
+            { method: 'cash', amount: 2000000 }
+        ]
+    );
+
+    // Check customer debt increased by 4M
+    const updatedCust = db.getAllData().customers.find((c) => c.id === cust.id);
+    assert.equal(updatedCust.debt, initialDebt + 4000000);
+
+    // Check cashbook vouchers: 3 vouchers created for this invoice
+    const vouchers = db.getAllData().cashbook.filter((c) => c.invoiceId === invoice.id);
+    assert.equal(vouchers.length, 3);
+    const voucherMethods = vouchers.map((v) => ({ method: v.method, amount: v.amount }));
+    assert.ok(voucherMethods.some((v) => v.method === 'Chuyển khoản' && v.amount === 2000000));
+    assert.ok(voucherMethods.some((v) => v.method === 'Thẻ' && v.amount === 2000000));
+    assert.ok(voucherMethods.some((v) => v.method === 'Tiền mặt' && v.amount === 2000000));
+
+    // Cancel invoice safely reverts stock, customer debt, and refunds
+    const cancelled = command('cancel', { invoiceId: invoice.id }).result;
+    assert.equal(cancelled.totalRefund, 6000000);
+    assert.equal(cancelled.debtReduction, 4000000);
+
+    const revertedCust = db.getAllData().customers.find((c) => c.id === cust.id);
+    assert.equal(revertedCust.debt, initialDebt);
+
+    // Restore product price
+    const resetData = db.getAllData();
+    resetData.products.find((p) => p.code === prod.code).price = oldPrice;
+    db.saveAllData(resetData);
+});

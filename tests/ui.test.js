@@ -259,30 +259,105 @@ test('Custom bill in configuration saves and updates receipt preview and print l
     assert.equal(def.title, 'HÓA ĐƠN BÁN HÀNG');
     assert.equal(def.showNote, true);
 
-    // Open custom bill modal, set values and save
+    // Open custom bill modal, verify live preview and tab switching
     w.openBillCustomModal();
+    const modal = w.document.getElementById('bill-custom-modal');
+    assert.ok(!modal.classList.contains('hidden'));
+    const previewPaper = w.document.getElementById('bill-preview-paper');
+    assert.ok(previewPaper);
+
+    // Test tab switching
+    w.switchBillCustomTab('store');
+    assert.ok(!w.document.getElementById('bill-tab-content-store').classList.contains('hidden'));
+    assert.ok(w.document.getElementById('bill-tab-content-format').classList.contains('hidden'));
+
+    w.switchBillCustomTab('items');
+    assert.ok(!w.document.getElementById('bill-tab-content-items').classList.contains('hidden'));
+
+    w.switchBillCustomTab('footer');
+    assert.ok(!w.document.getElementById('bill-tab-content-footer').classList.contains('hidden'));
+
+    w.switchBillCustomTab('format');
+    assert.ok(!w.document.getElementById('bill-tab-content-format').classList.contains('hidden'));
+
+    // Set deep customization values including multiline content with line breaks (\n)
     w.document.getElementById('bill-opt-paper-k58').checked = true;
-    w.document.getElementById('bill-custom-title').value = 'PHIẾU TÍNH TIỀN';
-    w.document.getElementById('bill-custom-footer').value = 'Hẹn gặp lại quý khách!';
+    w.document.getElementById('bill-custom-font-family').value = 'sans';
+    w.document.getElementById('bill-custom-font-size').value = 'large';
+    w.document.getElementById('bill-custom-title').value = 'PHIẾU TÍNH TIỀN\n(KIÊM PHIẾU XUẤT KHO)';
+    w.document.getElementById('bill-custom-footer').value =
+        'Hẹn gặp lại quý khách!\nHotline khiếu nại: 0988.112.233';
+    w.document.getElementById('bill-custom-slogan').value =
+        'Uy tín tạo nên thương hiệu\nChuyên sỉ & lẻ toàn quốc';
+    w.document.getElementById('bill-custom-store-name').value = 'TIỆM CÔNG NGHỆ PRO\nCHI NHÁNH 1';
+    w.document.getElementById('bill-custom-address').value =
+        'CS1: 103 Võ Văn Tần, Q.3\nCS2: 456 CMT8, Q.10';
+    w.document.getElementById('bill-custom-show-stt').checked = true;
+    w.document.getElementById('bill-custom-show-item-unit').checked = true;
+    w.document.getElementById('bill-custom-policy').value =
+        '- Hàng mua rồi miễn đổi trả sau 3 ngày\n- Vui lòng giữ nguyên tem mác';
+    w.document.getElementById('bill-custom-show-signatures').checked = true;
+
+    // Trigger live preview update
     w.onBillConfigChange();
 
+    // Verify live preview renders custom values and preserves multiline content
+    assert.ok(previewPaper.textContent.includes('PHIẾU TÍNH TIỀN\n(KIÊM PHIẾU XUẤT KHO)'));
+    assert.ok(previewPaper.textContent.includes('TIỆM CÔNG NGHỆ PRO\nCHI NHÁNH 1'));
+    assert.ok(
+        previewPaper.textContent.includes('Uy tín tạo nên thương hiệu\nChuyên sỉ & lẻ toàn quốc')
+    );
+    assert.ok(previewPaper.textContent.includes('CS1: 103 Võ Văn Tần, Q.3\nCS2: 456 CMT8, Q.10'));
+    assert.ok(
+        previewPaper.textContent.includes(
+            '- Hàng mua rồi miễn đổi trả sau 3 ngày\n- Vui lòng giữ nguyên tem mác'
+        )
+    );
+    assert.ok(
+        previewPaper.textContent.includes('Hẹn gặp lại quý khách!\nHotline khiếu nại: 0988.112.233')
+    );
+    assert.ok(previewPaper.textContent.includes('Người mua hàng'));
+
+    // Test print test bill template
+    w.printTestBillTemplate();
+    const testPrintRoot = w.document.getElementById('print-root');
+    assert.ok(testPrintRoot);
+    assert.equal(testPrintRoot.dataset.paper, 'k58');
+    assert.ok(testPrintRoot.textContent.includes('TIỆM CÔNG NGHỆ PRO\nCHI NHÁNH 1'));
+
+    // Save bill custom config
     await w.saveBillCustomConfig();
 
     const updated = w.getBillConfig();
     assert.equal(updated.paperSize, 'k58');
-    assert.equal(updated.title, 'PHIẾU TÍNH TIỀN');
-    assert.equal(updated.footer, 'Hẹn gặp lại quý khách!');
+    assert.equal(updated.fontFamily, 'sans');
+    assert.equal(updated.fontSize, 'large');
+    assert.equal(updated.title, 'PHIẾU TÍNH TIỀN\n(KIÊM PHIẾU XUẤT KHO)');
+    assert.equal(updated.footer, 'Hẹn gặp lại quý khách!\nHotline khiếu nại: 0988.112.233');
+    assert.equal(updated.slogan, 'Uy tín tạo nên thương hiệu\nChuyên sỉ & lẻ toàn quốc');
+    assert.equal(updated.customStoreName, 'TIỆM CÔNG NGHỆ PRO\nCHI NHÁNH 1');
+    assert.equal(updated.customAddress, 'CS1: 103 Võ Văn Tần, Q.3\nCS2: 456 CMT8, Q.10');
+    assert.equal(updated.showStt, true);
+    assert.equal(updated.showItemUnit, true);
+    assert.equal(
+        updated.policy,
+        '- Hàng mua rồi miễn đổi trả sau 3 ngày\n- Vui lòng giữ nguyên tem mác'
+    );
+    assert.equal(updated.showSignatures, true);
 
-    // Open receipt modal and check custom title, footer, item note and paper size
+    // Open receipt modal and check custom title, footer, item note, slogan and paper size
     const testInv = {
         code: 'HD000099',
         time: '21/10/2026 10:00',
         customer: 'Nguyễn Văn An',
+        customerAddress: '123 Đường Số 1, Q.1',
+        customerDebt: 500000,
         cashier: 'Thu ngân 1',
         items: [
             {
                 code: 'SP01',
                 name: 'Sản phẩm mẫu',
+                unit: 'Cái',
                 qty: 2,
                 price: 50000,
                 note: 'Bảo hành 6 tháng'
@@ -292,12 +367,28 @@ test('Custom bill in configuration saves and updates receipt preview and print l
         paid: 100000
     };
     w.openReceiptModal(testInv);
-    assert.equal(w.document.getElementById('receipt-title').textContent, 'PHIẾU TÍNH TIỀN');
-    assert.equal(w.document.getElementById('receipt-footer').textContent, 'Hẹn gặp lại quý khách!');
+    assert.equal(
+        w.document.getElementById('receipt-title').textContent,
+        'PHIẾU TÍNH TIỀN\n(KIÊM PHIẾU XUẤT KHO)'
+    );
+    assert.equal(
+        w.document.getElementById('receipt-footer').textContent,
+        'Hẹn gặp lại quý khách!\nHotline khiếu nại: 0988.112.233'
+    );
+    assert.equal(
+        w.document.getElementById('receipt-store-name').textContent,
+        'TIỆM CÔNG NGHỆ PRO\nCHI NHÁNH 1'
+    );
+    assert.equal(
+        w.document.getElementById('receipt-slogan').textContent,
+        'Uy tín tạo nên thương hiệu\nChuyên sỉ & lẻ toàn quốc'
+    );
     assert.ok(
         w.document.getElementById('receipt-items-tbody').textContent.includes('Bảo hành 6 tháng')
     );
+    assert.ok(w.document.getElementById('receipt-items-tbody').textContent.includes('Cái'));
     assert.equal(w.document.getElementById('printable-receipt').dataset.paper, 'k58');
+    assert.ok(!w.document.getElementById('receipt-signatures').classList.contains('hidden'));
 
     // Test printReceipt uses paperSize k58
     w.printReceipt();
@@ -569,6 +660,119 @@ test('Import cancellation updates UI, hides cancel button, shows status banner a
         w.renderImports();
         rows = w.document.querySelectorAll('#import-tbody tr');
         assert.ok(Array.from(rows).some((r) => r.textContent.includes(targetCode)));
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('POS multi-method payment splits tender, computes debt/change and checks out with payments payload', async () => {
+    const dom = browser(),
+        w = dom.window;
+    try {
+        w.eval(`
+            window.commanded = null;
+            KVStore.command = async (cmd, payload) => {
+                window.commanded = { cmd, payload };
+                if (cmd === 'sale') {
+                    const inv = {
+                        id: 'HD0099',
+                        code: 'HD0099',
+                        time: '22/10/2026 10:00',
+                        customer: payload.customerId ? 'Khách VIP' : 'Khách lẻ',
+                        phone: '0901234567',
+                        items: payload.items,
+                        total: 10000000,
+                        discount: payload.discount || 0,
+                        paid: payload.given || 6000000,
+                        returnedTotal: 0,
+                        redPaid: true,
+                        status: 'completed',
+                        paymentMethod: payload.paymentMethod,
+                        payments: payload.payments || [{ amount: 6000000, method: 'multi' }]
+                    };
+                    KVStore.data.invoices.unshift(inv);
+                    return inv;
+                }
+                return {};
+            };
+        `);
+
+        // 1. Switch to POS and add a product
+        w.switchView('pos');
+        const prod = w.eval('KVStore.data.products.find(p => p.stock > 0)');
+        w.addPosCartItem(prod);
+        // Set price to 10,000,000
+        w.setPosItemPrice(prod.code, '10000000');
+        assert.equal(w.document.getElementById('pos-grand-total').textContent, '10.000.000');
+
+        // 2. Select customer (Khách VIP)
+        const cust = w.eval('KVStore.data.customers.find(c => c.code !== "KL")');
+        w.selectPosCustomer(cust);
+
+        // 3. Switch payment method to 'multi' (Phối hợp)
+        w.setPosPaymentMethod('multi');
+        const singleContainer = w.document.getElementById('pos-single-pay-container');
+        const multiContainer = w.document.getElementById('pos-multi-pay-panel');
+        assert.ok(singleContainer.classList.contains('hidden'));
+        assert.ok(!multiContainer.classList.contains('hidden'));
+
+        // 4. Enter amounts: Chuyển khoản 2M, Tiền mặt 2M, Quẹt thẻ 2M
+        w.handleMultiPaymentInput('transfer', '2000000');
+        w.handleMultiPaymentInput('cash', '2000000');
+        w.handleMultiPaymentInput('card', '2000000');
+
+        assert.equal(w.document.getElementById('pos-multi-total-paid').textContent, '6.000.000 đ');
+        const summaryText = w.document.getElementById('pos-multi-summary').textContent;
+        assert.ok(summaryText.includes('4.000.000'));
+        assert.ok(summaryText.includes('Ghi nợ'));
+
+        // 5. Test fill remainder button on cash
+        w.fillMultiPaymentRemainder('cash');
+        // Total is 10M, transfer=2M, card=2M -> cash becomes 6M
+        assert.equal(w.document.getElementById('pos-multi-pay-cash').value, '6.000.000');
+        assert.equal(w.document.getElementById('pos-multi-total-paid').textContent, '10.000.000 đ');
+
+        // Set back to 2M cash for 4M debt test
+        w.handleMultiPaymentInput('cash', '2000000');
+        assert.equal(w.document.getElementById('pos-multi-total-paid').textContent, '6.000.000 đ');
+
+        // 6. Checkout
+        const invoice = await w.checkoutPos();
+        assert.ok(invoice);
+        assert.equal(invoice.code, 'HD0099');
+
+        const commanded = w.eval('window.commanded');
+        assert.equal(commanded.cmd, 'sale');
+        assert.equal(commanded.payload.paymentMethod, 'multi');
+        assert.equal(commanded.payload.given, 6000000);
+        assert.deepEqual(JSON.parse(JSON.stringify(commanded.payload.payments)), [
+            { method: 'transfer', amount: 2000000 },
+            { method: 'cash', amount: 2000000 },
+            { method: 'card', amount: 2000000 }
+        ]);
+
+        // 7. Verify receipt modal displays payment breakdown and debt
+        const receiptModal = w.document.getElementById('receipt-modal');
+        assert.ok(!receiptModal.classList.contains('hidden'));
+        assert.equal(w.document.getElementById('receipt-debt').textContent, '4.000.000 đ');
+        assert.ok(!w.document.getElementById('receipt-row-debt').classList.contains('hidden'));
+        const receiptBreakdown = w.document.getElementById('receipt-payments-breakdown');
+        assert.ok(!receiptBreakdown.classList.contains('hidden'));
+        assert.ok(receiptBreakdown.textContent.includes('Chuyển khoản'));
+        assert.ok(receiptBreakdown.textContent.includes('Tiền mặt'));
+        assert.ok(receiptBreakdown.textContent.includes('Quẹt thẻ'));
+
+        // 8. Verify invoice detail modal displays payment breakdown and debt
+        w.openInvoiceDetailModal(invoice);
+        const invDetailModal = w.document.getElementById('invoice-detail-modal');
+        assert.ok(!invDetailModal.classList.contains('hidden'));
+        assert.equal(w.document.getElementById('inv-detail-debt').textContent, '4.000.000 đ');
+        assert.ok(!w.document.getElementById('inv-detail-debt-row').classList.contains('hidden'));
+        const detailBreakdown = w.document.getElementById('inv-detail-payments-breakdown');
+        assert.ok(!detailBreakdown.classList.contains('hidden'));
+        assert.ok(detailBreakdown.textContent.includes('Chuyển khoản'));
+        assert.ok(detailBreakdown.textContent.includes('Tiền mặt'));
+        assert.ok(detailBreakdown.textContent.includes('Quẹt thẻ'));
     } finally {
         dom.window.close();
     }
