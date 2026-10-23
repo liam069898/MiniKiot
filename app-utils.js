@@ -35,7 +35,7 @@ function parseRecordDate(str) {
     return isNaN(d.getTime()) ? null : d;
 }
 
-function matchesDateFilter(recordTimeStr, filterMode) {
+function matchesDateFilter(recordTimeStr, filterMode, customFromStr, customToStr) {
     if (!filterMode || filterMode === 'all') return true;
     const d = parseRecordDate(recordTimeStr);
     if (!d) return true;
@@ -56,6 +56,10 @@ function matchesDateFilter(recordTimeStr, filterMode) {
         const past7 = new Date(todayStart);
         past7.setDate(past7.getDate() - 6);
         return d >= past7 && d <= todayEnd;
+    } else if (filterMode === '30days') {
+        const past30 = new Date(todayStart);
+        past30.setDate(past30.getDate() - 29);
+        return d >= past30 && d <= todayEnd;
     } else if (filterMode === 'this_month') {
         return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
     } else if (filterMode === 'last_month') {
@@ -64,6 +68,34 @@ function matchesDateFilter(recordTimeStr, filterMode) {
             d.getFullYear() === lastMonthDate.getFullYear() &&
             d.getMonth() === lastMonthDate.getMonth()
         );
+    } else if (filterMode === 'this_quarter') {
+        const currentQuarter = Math.floor(now.getMonth() / 3);
+        const recordQuarter = Math.floor(d.getMonth() / 3);
+        return d.getFullYear() === now.getFullYear() && recordQuarter === currentQuarter;
+    } else if (filterMode === 'this_year') {
+        return d.getFullYear() === now.getFullYear();
+    } else if (filterMode === 'custom') {
+        const fromStr =
+            customFromStr ||
+            (typeof document !== 'undefined'
+                ? document.getElementById('rep-date-from')?.value
+                : '') ||
+            '';
+        const toStr =
+            customToStr ||
+            (typeof document !== 'undefined'
+                ? document.getElementById('rep-date-to')?.value
+                : '') ||
+            '';
+        if (fromStr) {
+            const fromDate = new Date(fromStr + 'T00:00:00');
+            if (!isNaN(fromDate.getTime()) && d < fromDate) return false;
+        }
+        if (toStr) {
+            const toDate = new Date(toStr + 'T23:59:59.999');
+            if (!isNaN(toDate.getTime()) && d > toDate) return false;
+        }
+        return true;
     }
     return true;
 }

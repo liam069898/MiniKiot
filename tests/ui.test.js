@@ -773,6 +773,15 @@ test('POS multi-method payment splits tender, computes debt/change and checks ou
         assert.ok(detailBreakdown.textContent.includes('Chuyển khoản'));
         assert.ok(detailBreakdown.textContent.includes('Tiền mặt'));
         assert.ok(detailBreakdown.textContent.includes('Quẹt thẻ'));
+        assert.equal(
+            w.document.getElementById('inv-detail-note').textContent,
+            '(Không có ghi chú)'
+        );
+
+        // Also verify invoice detail modal displays note when order has note
+        w.openInvoiceDetailModal({ ...invoice, note: 'Giao hàng sau 18h' });
+        assert.equal(w.document.getElementById('inv-detail-note').textContent, 'Giao hàng sau 18h');
+        assert.ok(w.document.getElementById('inv-detail-note').classList.contains('font-medium'));
     } finally {
         dom.window.close();
     }

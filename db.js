@@ -30,13 +30,34 @@ const ENTITY_TABLES = [
 ];
 let db = null;
 
+function isNetworkPath(filepath) {
+    if (process.env.NKIOT_JOURNAL_MODE) {
+        return process.env.NKIOT_JOURNAL_MODE.toUpperCase() !== 'WAL';
+    }
+    if (process.platform === 'darwin' && filepath.startsWith('/Volumes/')) {
+        return true;
+    }
+    if (process.platform === 'win32' && /^\\\\[^\\]+\\[^\\]+/.test(filepath)) {
+        return true;
+    }
+    return false;
+}
+
 function getDb() {
     if (!db) {
         db = new DatabaseSync(DB_PATH);
-        try {
-            db.exec('PRAGMA journal_mode = WAL;');
-        } catch {
-            // Network filesystems like SMB/NFS may not support WAL shared memory
+        if (!isNetworkPath(DB_PATH)) {
+            try {
+                db.exec('PRAGMA journal_mode = WAL;');
+            } catch {
+                try {
+                    db.exec('PRAGMA journal_mode = DELETE;');
+                } catch {}
+            }
+        } else {
+            try {
+                db.exec('PRAGMA journal_mode = DELETE;');
+            } catch {}
         }
         db.exec('PRAGMA synchronous = FULL;');
         db.exec('PRAGMA busy_timeout = 5000;');

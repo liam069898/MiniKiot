@@ -129,7 +129,7 @@ function renderBreakdownBars(containerId, items) {
     if (!items || items.length === 0) {
         container.innerHTML = renderHTML`
             <div class="h-full w-full flex flex-col items-center justify-center text-gray-400 py-4">
-                <span class="text-2xl mb-1">🍩</span>
+                <svg class="w-7 h-7 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/></svg>
                 <span class="text-[11.5px] font-medium">Chưa có dữ liệu cơ cấu</span>
             </div>
         `;
@@ -208,9 +208,14 @@ function exportCurrentReport() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    const dateStr = new Date().toISOString().slice(0, 10);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `BaoCao_${currentReportTab}_${dateStr}.csv`);
+    const dateFilter = document.getElementById('rep-date-filter')?.value || 'this_month';
+    const customFrom = document.getElementById('rep-date-from')?.value;
+    const customTo = document.getElementById('rep-date-to')?.value;
+    const dateSuffix =
+        dateFilter === 'custom' && customFrom && customTo
+            ? `${customFrom}_den_${customTo}`
+            : dateFilter;
+    link.setAttribute('download', `BaoCao_${currentReportTab}_${dateSuffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -221,6 +226,36 @@ function exportCurrentReport() {
 
 function printCurrentReport() {
     printRegion('view-reports', false);
+}
+
+function onReportDateFilterChange() {
+    const filter = document.getElementById('rep-date-filter')?.value;
+    const customContainer = document.getElementById('rep-custom-date-container');
+    const fromInput = document.getElementById('rep-date-from');
+    const toInput = document.getElementById('rep-date-to');
+
+    if (filter === 'custom') {
+        if (customContainer) {
+            customContainer.classList.remove('hidden');
+            customContainer.classList.add('inline-flex');
+        }
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        if (fromInput && !fromInput.value) {
+            fromInput.value = `${y}-${m}-01`;
+        }
+        if (toInput && !toInput.value) {
+            toInput.value = `${y}-${m}-${d}`;
+        }
+    } else {
+        if (customContainer) {
+            customContainer.classList.add('hidden');
+            customContainer.classList.remove('inline-flex');
+        }
+    }
+    renderReports();
 }
 
 function renderReports() {
@@ -272,21 +307,73 @@ function renderReports() {
     if (repBranchEl) repBranchEl.textContent = isAll ? 'Toàn bộ chi nhánh' : currentBranch;
 
     const dateFilter = document.getElementById('rep-date-filter')?.value || 'this_month';
+    const customFrom = document.getElementById('rep-date-from')?.value;
+    const customTo = document.getElementById('rep-date-to')?.value;
+
+    const repDateSummary = document.getElementById('rep-date-summary');
+    if (repDateSummary) {
+        if (dateFilter === 'custom') {
+            const fText = customFrom ? customFrom.split('-').reverse().join('/') : '...';
+            const tText = customTo ? customTo.split('-').reverse().join('/') : '...';
+            repDateSummary.textContent = `| ${fText} - ${tText}`;
+        } else {
+            const filterLabels = {
+                today: 'Hôm nay',
+                yesterday: 'Hôm qua',
+                '7days': '7 ngày qua',
+                '30days': '30 ngày qua',
+                this_month: 'Tháng này',
+                last_month: 'Tháng trước',
+                this_quarter: 'Quý này',
+                this_year: 'Năm nay',
+                all: 'Tất cả thời gian'
+            };
+            repDateSummary.textContent = `| ${filterLabels[dateFilter] || dateFilter}`;
+        }
+    }
 
     if (currentReportTab === 'sales') {
-        renderSalesReportTab(data, currentBranch, branchProducts, dateFilter);
+        renderSalesReportTab(data, currentBranch, branchProducts, dateFilter, customFrom, customTo);
     } else if (currentReportTab === 'products') {
-        renderProductsReportTab(data, currentBranch, branchProducts, dateFilter);
+        renderProductsReportTab(
+            data,
+            currentBranch,
+            branchProducts,
+            dateFilter,
+            customFrom,
+            customTo
+        );
     } else if (currentReportTab === 'cashflow') {
-        renderCashflowReportTab(data, currentBranch, branchProducts, dateFilter);
+        renderCashflowReportTab(
+            data,
+            currentBranch,
+            branchProducts,
+            dateFilter,
+            customFrom,
+            customTo
+        );
     } else if (currentReportTab === 'inventory') {
-        renderInventoryReportTab(data, currentBranch, branchProducts, dateFilter);
+        renderInventoryReportTab(
+            data,
+            currentBranch,
+            branchProducts,
+            dateFilter,
+            customFrom,
+            customTo
+        );
     }
 
     filterReportTable();
 }
 
-function renderSalesReportTab(data, currentBranch, branchProducts, dateFilter) {
+function renderSalesReportTab(
+    data,
+    currentBranch,
+    branchProducts,
+    dateFilter,
+    customFrom,
+    customTo
+) {
     const isAll =
         currentBranch ===
         (typeof ALL_BRANCHES !== 'undefined' ? ALL_BRANCHES : 'Toàn bộ chi nhánh');
@@ -295,7 +382,9 @@ function renderSalesReportTab(data, currentBranch, branchProducts, dateFilter) {
             (isAll || (i.branch || FALLBACK_BRANCH) === currentBranch) &&
             (i.status !== 'cancelled' || i.bookingVersion === 2)
     );
-    const validInvoices = branchInvoices.filter((i) => matchesDateFilter(i.time, dateFilter));
+    const validInvoices = branchInvoices.filter((i) =>
+        matchesDateFilter(i.time, dateFilter, customFrom, customTo)
+    );
 
     const branchReturns = (data.returns || []).filter(
         (r) =>
@@ -305,7 +394,9 @@ function renderSalesReportTab(data, currentBranch, branchProducts, dateFilter) {
                     i.code === r.invoiceCode && i.status === 'cancelled' && i.bookingVersion !== 2
             )
     );
-    const validReturns = branchReturns.filter((r) => matchesDateFilter(r.time, dateFilter));
+    const validReturns = branchReturns.filter((r) =>
+        matchesDateFilter(r.time, dateFilter, customFrom, customTo)
+    );
 
     const grossRevenue = validInvoices.reduce((a, c) => a + (c.total || 0), 0);
     const totalReturns = validReturns.reduce(
@@ -482,12 +573,6 @@ function renderSalesReportTab(data, currentBranch, branchProducts, dateFilter) {
         },
         { label: 'Thẻ', value: methods.card, dotClass: 'bg-indigo-500', barClass: 'bg-indigo-500' },
         {
-            label: 'Chưa rõ phương thức (dữ liệu cũ)',
-            value: methods.unknown,
-            dotClass: 'bg-gray-500',
-            barClass: 'bg-gray-500'
-        },
-        {
             label: 'Khách nợ / Chưa trả',
             value: debtTotal,
             dotClass: 'bg-amber-500',
@@ -558,7 +643,14 @@ function renderSalesReportTab(data, currentBranch, branchProducts, dateFilter) {
     }
 }
 
-function renderProductsReportTab(data, currentBranch, branchProducts, dateFilter) {
+function renderProductsReportTab(
+    data,
+    currentBranch,
+    branchProducts,
+    dateFilter,
+    customFrom,
+    customTo
+) {
     const isAll =
         currentBranch ===
         (typeof ALL_BRANCHES !== 'undefined' ? ALL_BRANCHES : 'Toàn bộ chi nhánh');
@@ -567,7 +659,9 @@ function renderProductsReportTab(data, currentBranch, branchProducts, dateFilter
             (isAll || (i.branch || FALLBACK_BRANCH) === currentBranch) &&
             (i.status !== 'cancelled' || i.bookingVersion === 2)
     );
-    const validInvoices = branchInvoices.filter((i) => matchesDateFilter(i.time, dateFilter));
+    const validInvoices = branchInvoices.filter((i) =>
+        matchesDateFilter(i.time, dateFilter, customFrom, customTo)
+    );
 
     const prodMap = Object.create(null);
     validInvoices.forEach((inv) => {
@@ -598,7 +692,7 @@ function renderProductsReportTab(data, currentBranch, branchProducts, dateFilter
         .filter(
             (r) =>
                 (isAll || (r.branch || FALLBACK_BRANCH) === currentBranch) &&
-                matchesDateFilter(r.time, dateFilter) &&
+                matchesDateFilter(r.time, dateFilter, customFrom, customTo) &&
                 !data.invoices.some(
                     (i) =>
                         i.code === r.invoiceCode &&
@@ -804,14 +898,23 @@ function renderProductsReportTab(data, currentBranch, branchProducts, dateFilter
     }
 }
 
-function renderCashflowReportTab(data, currentBranch, branchProducts, dateFilter) {
+function renderCashflowReportTab(
+    data,
+    currentBranch,
+    branchProducts,
+    dateFilter,
+    customFrom,
+    customTo
+) {
     const isAll =
         currentBranch ===
         (typeof ALL_BRANCHES !== 'undefined' ? ALL_BRANCHES : 'Toàn bộ chi nhánh');
     const branchCashbook = (data.cashbook || []).filter(
         (c) => isAll || (c.branch || FALLBACK_BRANCH) === currentBranch
     );
-    const validCashbook = branchCashbook.filter((c) => matchesDateFilter(c.time, dateFilter));
+    const validCashbook = branchCashbook.filter((c) =>
+        matchesDateFilter(c.time, dateFilter, customFrom, customTo)
+    );
 
     const thuList = validCashbook.filter((c) => c.type === 'thu');
     const chiList = validCashbook.filter((c) => c.type === 'chi');

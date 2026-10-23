@@ -5555,6 +5555,15 @@ function openInvoiceDetailModal(inv) {
     document.getElementById('inv-detail-cashier').textContent = inv.cashier || 'Trần Văn Nhất';
     document.getElementById('inv-detail-branch').textContent = inv.branch || FALLBACK_BRANCH;
 
+    const noteEl = document.getElementById('inv-detail-note');
+    if (noteEl) {
+        const noteText = typeof inv.note === 'string' ? inv.note.trim() : '';
+        noteEl.textContent = noteText || '(Không có ghi chú)';
+        noteEl.className = noteText
+            ? 'font-medium text-gray-900 break-words whitespace-pre-line'
+            : 'text-gray-500 italic';
+    }
+
     // Status warning banner if cancelled or returned
     const bannerEl = document.getElementById('inv-detail-status-banner');
     if (bannerEl) {
